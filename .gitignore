@@ -37,3 +37,7 @@ tmp/**
 /woocommerce-subscriptions/
 /wp-license-manager (4)/
 /wp-license-manager (7)/
+.qoder/
+generate_admin_manager.py
+prd.md
+wplm-licenses_and_products-2025-08-21 (1).csv
