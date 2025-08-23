@@ -1,0 +1,664 @@
+/* WP License Manager - Modern Admin Styles */
+
+/* RTL Support */
+[dir="rtl"] .wplm-dashboard-cards {
+    direction: rtl;
+}
+
+[dir="rtl"] .wplm-card {
+    direction: rtl;
+    text-align: right;
+}
+
+[dir="rtl"] .wplm-card-icon {
+    margin-left: 20px;
+    margin-right: 0;
+}
+
+[dir="rtl"] .wplm-form-grid {
+    direction: rtl;
+}
+
+[dir="rtl"] .wplm-form-group label {
+    text-align: right;
+}
+
+[dir="rtl"] .wplm-table-wrapper {
+    direction: rtl;
+}
+
+[dir="rtl"] .wplm-status-badge {
+    direction: rtl;
+}
+
+[dir="rtl"] .wplm-meta-box {
+    direction: rtl;
+}
+
+[dir="rtl"] .wplm-meta-box h3 {
+    text-align: right;
+}
+
+[dir="rtl"] .wplm-settings-page {
+    direction: rtl;
+}
+
+[dir="rtl"] .nav-tab-wrapper {
+    direction: rtl;
+}
+
+[dir="rtl"] .nav-tab {
+    margin-left: 0;
+    margin-right: 5px;
+}
+
+/* Dashboard Cards */
+.wplm-dashboard-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.wplm-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.wplm-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+}
+
+.wplm-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    z-index: 0;
+}
+
+.wplm-card > * {
+    position: relative;
+    z-index: 1;
+}
+
+.wplm-card-licenses {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.wplm-card-active {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.wplm-card-products {
+    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+}
+
+.wplm-card-customers {
+    background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+}
+
+.wplm-card-subscriptions {
+    background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+    color: #333;
+}
+
+.wplm-card-icon {
+    font-size: 48px;
+    opacity: 0.9;
+}
+
+.wplm-card-content h3 {
+    margin: 0;
+    font-size: 32px;
+    font-weight: 700;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.wplm-card-content p {
+    margin: 8px 0 0 0;
+    font-size: 14px;
+    opacity: 0.9;
+    font-weight: 500;
+}
+
+/* Dashboard Sections */
+.wplm-dashboard-section {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    margin: 24px 0;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+    border: 1px solid #e5e7eb;
+}
+
+.wplm-dashboard-section h2 {
+    margin: 0 0 20px 0;
+    color: #1f2937;
+    font-weight: 600;
+    font-size: 20px;
+}
+
+/* Charts */
+.wplm-dashboard-charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin: 24px 0;
+}
+
+.wplm-chart-container {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+    border: 1px solid #e5e7eb;
+}
+
+.wplm-chart-container h3 {
+    margin: 0 0 20px 0;
+    color: #1f2937;
+    font-weight: 600;
+    font-size: 18px;
+}
+
+/* Quick Actions */
+.wplm-quick-actions {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    margin: 24px 0;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+    border: 1px solid #e5e7eb;
+}
+
+.wplm-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+}
+
+.wplm-action-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 16px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    text-decoration: none;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    border: none;
+    cursor: pointer;
+}
+
+.wplm-action-button:hover {
+    color: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    text-decoration: none;
+}
+
+.wplm-action-button:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
+    color: #fff;
+}
+
+/* Forms and Inputs */
+.wplm-form-grid {
+    display: grid;
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.wplm-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.wplm-form-group label {
+    font-weight: 600;
+    color: #374151;
+    font-size: 14px;
+}
+
+.wplm-form-group input,
+.wplm-form-group select,
+.wplm-form-group textarea {
+    padding: 12px 16px;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.wplm-form-group input:focus,
+.wplm-form-group select:focus,
+.wplm-form-group textarea:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* Tables */
+.wplm-table-container {
+    background: #fff;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+    border: 1px solid #e5e7eb;
+}
+
+.wplm-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.wplm-table th {
+    background: #f9fafb;
+    padding: 16px;
+    text-align: left;
+    font-weight: 600;
+    color: #374151;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.wplm-table td {
+    padding: 16px;
+    border-bottom: 1px solid #e5e7eb;
+    color: #6b7280;
+}
+
+.wplm-table tr:hover {
+    background: #f9fafb;
+}
+
+/* Status Badges */
+.wplm-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.wplm-status-active {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.wplm-status-inactive {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.wplm-status-expired {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.wplm-status-cancelled {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+/* Activity Log */
+.wplm-activity-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 0;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.wplm-activity-item:last-child {
+    border-bottom: none;
+}
+
+.wplm-activity-description {
+    flex: 1;
+    color: #374151;
+}
+
+.wplm-activity-time {
+    color: #6b7280;
+    font-size: 12px;
+    margin-left: 16px;
+}
+
+.wplm-activity-type {
+    background: #f3f4f6;
+    color: #374151;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: monospace;
+    font-weight: 600;
+}
+
+/* Product Charts */
+.wplm-products-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.wplm-product-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.wplm-product-name {
+    min-width: 120px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #374151;
+}
+
+.wplm-product-bar {
+    flex: 1;
+    height: 24px;
+    background: #f3f4f6;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.wplm-product-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    transition: width 0.5s ease;
+}
+
+.wplm-product-count {
+    min-width: 40px;
+    text-align: right;
+    font-weight: 600;
+    font-size: 12px;
+    color: #374151;
+}
+
+/* Notifications */
+.wplm-notification {
+    padding: 16px 20px;
+    border-radius: 8px;
+    margin: 16px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.wplm-notification-success {
+    background: #d1fae5;
+    color: #065f46;
+    border-left: 4px solid #10b981;
+}
+
+.wplm-notification-error {
+    background: #fee2e2;
+    color: #991b1b;
+    border-left: 4px solid #ef4444;
+}
+
+.wplm-notification-warning {
+    background: #fef3c7;
+    color: #92400e;
+    border-left: 4px solid #f59e0b;
+}
+
+.wplm-notification-info {
+    background: #dbeafe;
+    color: #1e40af;
+    border-left: 4px solid #3b82f6;
+}
+
+/* Search and Filters */
+.wplm-search-filters {
+    background: #fff;
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+    border: 1px solid #e5e7eb;
+}
+
+.wplm-filters-row {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.wplm-search-input {
+    flex: 1;
+    min-width: 250px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .wplm-dashboard-cards {
+        grid-template-columns: 1fr;
+    }
+    
+    .wplm-dashboard-charts {
+        grid-template-columns: 1fr;
+    }
+    
+    .wplm-actions-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .wplm-filters-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .wplm-search-input {
+        min-width: auto;
+    }
+}
+
+/* Loading States */
+.wplm-loading {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0.7;
+}
+
+.wplm-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #e5e7eb;
+    border-top: 2px solid #667eea;
+    border-radius: 50%;
+    animation: wplm-spin 1s linear infinite;
+}
+
+@keyframes wplm-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Animation Classes */
+.wplm-fade-in {
+    animation: wplm-fadeIn 0.5s ease-in-out;
+}
+
+@keyframes wplm-fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.wplm-slide-up {
+    animation: wplm-slideUp 0.3s ease-out;
+}
+
+@keyframes wplm-slideUp {
+    from { transform: translateY(10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+    .wplm-dashboard-section,
+    .wplm-chart-container,
+    .wplm-quick-actions,
+    .wplm-table-container,
+    .wplm-search-filters {
+        background: #1f2937;
+        border-color: #374151;
+        color: #f9fafb;
+    }
+    
+    .wplm-dashboard-section h2,
+    .wplm-chart-container h3 {
+        color: #f9fafb;
+    }
+    
+    .wplm-table th {
+        background: #374151;
+        color: #f9fafb;
+    }
+    
+    .wplm-table td {
+        color: #d1d5db;
+        border-color: #374151;
+    }
+    
+    .wplm-table tr:hover {
+        background: #374151;
+    }
+    
+    .wplm-form-group input,
+    .wplm-form-group select,
+    .wplm-form-group textarea {
+        background: #374151;
+        border-color: #4b5563;
+        color: #f9fafb;
+    }
+    
+    .wplm-form-group label {
+        color: #f9fafb;
+    }
+}
+
+/* Subscription Modal Styling */
+.wplm-modal {
+    display: none; /* Hidden by default */
+    position: fixed; /* Stay in place */
+    z-index: 100000; /* Sit on top */
+    left: 0;
+    top: 0;
+    width: 100%; /* Full width */
+    height: 100%; /* Full height */
+    overflow: auto; /* Enable scroll if needed */
+    background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+}
+
+.wplm-modal-show {
+    display: block; /* Show the modal when this class is added */
+}
+
+.wplm-modal-content {
+    background-color: #fefefe;
+    margin: 15% auto; /* 15% from the top and centered */
+    padding: 20px;
+    border: 1px solid #888;
+    width: 80%; /* Could be more or less, depending on screen size */
+    max-width: 700px;
+    box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19);
+    animation-name: animatetop;
+    animation-duration: 0.4s
+}
+
+/* Add Animation */
+@keyframes animatetop {
+    from {top: -300px; opacity: 0}
+    to {top: 15%; opacity: 1}
+}
+
+.wplm-modal-header {
+    padding: 2px 16px;
+    background-color: #f1f1f1;
+    color: #333;
+    border-bottom: 1px solid #e5e5e5;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.wplm-modal-header h3 {
+    margin: 0;
+    padding: 10px 0;
+    font-size: 1.2em;
+}
+
+.wplm-modal-body {
+    padding: 20px 16px;
+}
+
+.wplm-close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.wplm-close:hover,
+.wplm-close:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.wplm-modal .form-table th,
+.wplm-modal .form-table td {
+    padding: 10px 0;
+    vertical-align: middle;
+}
+
+.wplm-modal .form-table input[type="text"],
+.wplm-modal .form-table input[type="email"],
+.wplm-modal .form-table input[type="number"],
+.wplm-modal .form-table input[type="date"],
+.wplm-modal .form-table select {
+    width: 100%;
+    max-width: 300px;
+    box-sizing: border-box;
+}
+
+.wplm-modal .description {
+    font-style: italic;
+    color: #666;
+    margin-top: 5px;
+}
+
+.wplm-modal .submit {
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+    text-align: right;
+}

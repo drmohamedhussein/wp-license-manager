@@ -1,0 +1,146 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the License Worker package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: License Worker 1.0.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2024-01-01 12:00+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: license-worker.php:100
+msgid "License Worker"
+msgstr ""
+
+#: license-worker.php:101
+msgid "WordPress license validation and management worker plugin for premium products."
+msgstr ""
+
+#: includes/class-api-client.php:150
+msgid "Connection error: %s"
+msgstr ""
+
+#: includes/class-api-client.php:160
+msgid "HTTP Error: %d"
+msgstr ""
+
+#: includes/class-api-client.php:170
+msgid "Invalid JSON response from server"
+msgstr ""
+
+#: includes/class-license-validator.php:80
+msgid "License key is required"
+msgstr ""
+
+#: includes/class-license-validator.php:85
+msgid "Invalid license key format"
+msgstr ""
+
+#: includes/class-license-validator.php:95
+msgid "License validated (cached)"
+msgstr ""
+
+#: admin/class-admin-menu.php:100
+msgid "Dashboard"
+msgstr ""
+
+#: admin/class-admin-menu.php:110
+msgid "Licenses"
+msgstr ""
+
+#: admin/class-admin-menu.php:120
+msgid "Add License"
+msgstr ""
+
+#: admin/class-admin-menu.php:130
+msgid "Settings"
+msgstr ""
+
+#: admin/class-admin-menu.php:140
+msgid "Logs"
+msgstr ""
+
+#: admin/views/admin-dashboard.php:50
+msgid "Total Licenses"
+msgstr ""
+
+#: admin/views/admin-dashboard.php:60
+msgid "Active Licenses"
+msgstr ""
+
+#: admin/views/admin-dashboard.php:70
+msgid "Expired Licenses"
+msgstr ""
+
+#: admin/views/admin-dashboard.php:80
+msgid "Expiring Soon"
+msgstr ""
+
+#: admin/views/license-form.php:50
+msgid "Product"
+msgstr ""
+
+#: admin/views/license-form.php:60
+msgid "License Key"
+msgstr ""
+
+#: admin/views/license-form.php:70
+msgid "Validate"
+msgstr ""
+
+#: admin/views/license-form.php:80
+msgid "Activate License"
+msgstr ""
+
+#: admin/views/license-status.php:50
+msgid "Licensed"
+msgstr ""
+
+#: admin/views/license-status.php:55
+msgid "Unlicensed"
+msgstr ""
+
+#: admin/views/license-status.php:60
+msgid "Active"
+msgstr ""
+
+#: admin/views/license-status.php:65
+msgid "Expired"
+msgstr ""
+
+#: admin/views/license-status.php:70
+msgid "Inactive"
+msgstr ""
+
+#: assets/js/admin.js:100
+msgid "Validating license..."
+msgstr ""
+
+#: assets/js/admin.js:105
+msgid "Activating license..."
+msgstr ""
+
+#: assets/js/admin.js:110
+msgid "Deactivating license..."
+msgstr ""
+
+#: assets/js/admin.js:115
+msgid "An error occurred. Please try again."
+msgstr ""
+
+#: assets/js/admin.js:120
+msgid "Operation completed successfully."
+msgstr ""
+
+#: assets/js/admin.js:125
+msgid "Are you sure you want to deactivate this license?"
+msgstr ""

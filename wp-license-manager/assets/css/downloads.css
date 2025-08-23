@@ -1,0 +1,714 @@
+/**
+ * WPLM Enhanced Digital Downloads Frontend Styles
+ * Professional, responsive styling for the downloads system
+ */
+
+/* ==========================================================================
+   Base Downloads Styles
+   ========================================================================== */
+
+.wplm-downloads-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 30px;
+    margin: 30px 0;
+    padding: 0;
+}
+
+.wplm-download-item {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.wplm-download-item:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    border-color: #007cba;
+}
+
+.wplm-download-image {
+    position: relative;
+    overflow: hidden;
+    height: 200px;
+}
+
+.wplm-download-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+.wplm-download-item:hover .wplm-download-image img {
+    transform: scale(1.05);
+}
+
+.wplm-download-content {
+    padding: 20px;
+}
+
+.wplm-download-content h3 {
+    margin: 0 0 10px 0;
+    font-size: 1.4em;
+    font-weight: 600;
+    color: #333;
+    line-height: 1.3;
+}
+
+.wplm-download-description {
+    color: #666;
+    font-size: 0.95em;
+    line-height: 1.5;
+    margin-bottom: 15px;
+}
+
+.wplm-download-price {
+    margin-bottom: 20px;
+}
+
+.wplm-price {
+    font-size: 1.6em;
+    font-weight: 700;
+    color: #007cba;
+}
+
+.wplm-price-free {
+    font-size: 1.4em;
+    font-weight: 600;
+    color: #2e7d32;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.wplm-download-actions {
+    text-align: center;
+}
+
+.wplm-add-to-cart-btn {
+    background: linear-gradient(135deg, #007cba 0%, #005a8a 100%);
+    color: white;
+    border: none;
+    padding: 12px 30px;
+    border-radius: 25px;
+    font-weight: 600;
+    font-size: 0.95em;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    width: 100%;
+    max-width: 200px;
+}
+
+.wplm-add-to-cart-btn:hover {
+    background: linear-gradient(135deg, #005a8a 0%, #007cba 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0, 124, 186, 0.4);
+}
+
+.wplm-add-to-cart-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.wplm-add-to-cart-btn.added {
+    background: linear-gradient(135deg, #2e7d32 0%, #1b5e20 100%);
+}
+
+/* ==========================================================================
+   Cart Styles
+   ========================================================================== */
+
+.wplm-cart {
+    background: #fff;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    margin: 30px 0;
+}
+
+.wplm-cart h3 {
+    margin: 0 0 25px 0;
+    font-size: 1.8em;
+    color: #333;
+    text-align: center;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.wplm-cart-items {
+    margin-bottom: 25px;
+}
+
+.wplm-cart-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.wplm-cart-item:last-child {
+    border-bottom: none;
+}
+
+.wplm-cart-item .item-name {
+    font-weight: 600;
+    color: #333;
+    flex: 1;
+}
+
+.wplm-cart-item .item-price {
+    font-weight: 700;
+    color: #007cba;
+    margin: 0 20px;
+}
+
+.wplm-cart-item .remove-item {
+    background: #dc3545;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.wplm-cart-item .remove-item:hover {
+    background: #c82333;
+    transform: translateY(-1px);
+}
+
+.wplm-cart-total {
+    text-align: right;
+    padding: 20px 0;
+    border-top: 2px solid #007cba;
+    border-bottom: 2px solid #007cba;
+    margin: 20px 0;
+}
+
+.wplm-cart-total strong {
+    font-size: 1.4em;
+    color: #333;
+}
+
+.wplm-cart-actions {
+    text-align: center;
+}
+
+.wplm-checkout-btn {
+    display: inline-block;
+    background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+    color: white;
+    text-decoration: none;
+    padding: 15px 40px;
+    border-radius: 25px;
+    font-weight: 600;
+    font-size: 1.1em;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.wplm-checkout-btn:hover {
+    background: linear-gradient(135deg, #1e7e34 0%, #28a745 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4);
+    color: white;
+    text-decoration: none;
+}
+
+.wplm-cart-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: #666;
+}
+
+.wplm-cart-empty p {
+    font-size: 1.2em;
+    margin: 0;
+}
+
+/* ==========================================================================
+   Checkout Styles
+   ========================================================================== */
+
+.wplm-checkout {
+    background: #fff;
+    padding: 40px;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    margin: 30px 0;
+    max-width: 800px;
+}
+
+.wplm-checkout h3 {
+    margin: 0 0 30px 0;
+    font-size: 2em;
+    color: #333;
+    text-align: center;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.wplm-checkout h4 {
+    margin: 30px 0 20px 0;
+    font-size: 1.4em;
+    color: #333;
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 10px;
+}
+
+.wplm-billing-details p {
+    margin-bottom: 20px;
+}
+
+.wplm-billing-details label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+    color: #333;
+}
+
+.wplm-billing-details input {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 4px;
+    font-size: 1em;
+    transition: border-color 0.3s ease;
+}
+
+.wplm-billing-details input:focus {
+    outline: none;
+    border-color: #007cba;
+    box-shadow: 0 0 0 3px rgba(0, 124, 186, 0.1);
+}
+
+.wplm-billing-details input.wplm-field-error {
+    border-color: #dc3545;
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1);
+}
+
+.wplm-order-summary {
+    background: #f8f9fa;
+    padding: 25px;
+    border-radius: 6px;
+    margin: 30px 0;
+}
+
+.order-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.order-item:last-child {
+    border-bottom: none;
+}
+
+.order-total {
+    text-align: right;
+    padding-top: 15px;
+    border-top: 2px solid #007cba;
+    margin-top: 15px;
+}
+
+.order-total strong {
+    font-size: 1.3em;
+    color: #333;
+}
+
+.wplm-payment-methods {
+    margin: 30px 0;
+}
+
+.wplm-payment-methods label {
+    display: block;
+    padding: 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.wplm-payment-methods label:hover {
+    border-color: #007cba;
+    background-color: #f8f9fa;
+}
+
+.wplm-payment-methods input[type="radio"] {
+    margin-right: 10px;
+}
+
+.wplm-payment-methods input[type="radio"]:checked + label,
+.wplm-payment-methods label:has(input[type="radio"]:checked) {
+    border-color: #007cba;
+    background-color: #e3f2fd;
+}
+
+.wplm-checkout-actions {
+    text-align: center;
+    margin-top: 40px;
+}
+
+.wplm-place-order-btn {
+    background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+    color: white;
+    border: none;
+    padding: 18px 50px;
+    border-radius: 25px;
+    font-weight: 700;
+    font-size: 1.2em;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.wplm-place-order-btn:hover {
+    background: linear-gradient(135deg, #f7931e 0%, #ff6b35 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 107, 53, 0.4);
+}
+
+.wplm-place-order-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ==========================================================================
+   Customer Dashboard Styles
+   ========================================================================== */
+
+.wplm-customer-dashboard {
+    background: #fff;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    margin: 30px 0;
+}
+
+.wplm-dashboard-header {
+    text-align: center;
+    margin-bottom: 40px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.wplm-dashboard-header h3 {
+    margin: 0;
+    font-size: 2em;
+    color: #333;
+}
+
+.wplm-orders-list {
+    margin-top: 30px;
+}
+
+.wplm-order-item {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    border-left: 4px solid #007cba;
+}
+
+.wplm-order-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.wplm-order-number {
+    font-weight: 700;
+    color: #333;
+}
+
+.wplm-order-date {
+    color: #666;
+    font-size: 0.9em;
+}
+
+.wplm-order-details {
+    margin-top: 15px;
+}
+
+.wplm-license-info {
+    background: #e3f2fd;
+    padding: 15px;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+.wplm-license-key {
+    font-family: 'Courier New', monospace;
+    background: #fff;
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    display: inline-block;
+    margin-top: 5px;
+    font-weight: 600;
+    color: #333;
+}
+
+/* ==========================================================================
+   Notification Styles
+   ========================================================================== */
+
+.wplm-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    max-width: 400px;
+    padding: 15px 50px 15px 20px;
+    border-radius: 6px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    display: none;
+    font-weight: 500;
+}
+
+.wplm-notification-success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.wplm-notification-error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.wplm-notification-info {
+    background: #cce7ff;
+    color: #004085;
+    border: 1px solid #b3d7ff;
+}
+
+.wplm-notification-close {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    background: none;
+    border: none;
+    font-size: 1.2em;
+    cursor: pointer;
+    color: inherit;
+    opacity: 0.7;
+}
+
+.wplm-notification-close:hover {
+    opacity: 1;
+}
+
+/* ==========================================================================
+   Loading States
+   ========================================================================== */
+
+.wplm-form-loading {
+    position: relative;
+    pointer-events: none;
+}
+
+.wplm-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+
+.wplm-form-loading .wplm-loading-overlay {
+    display: flex;
+}
+
+.wplm-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #007cba;
+    border-radius: 50%;
+    animation: wplm-spin 1s linear infinite;
+}
+
+@keyframes wplm-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
+   Responsive Design
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    .wplm-downloads-list {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .wplm-download-item {
+        max-width: 100%;
+    }
+    
+    .wplm-cart,
+    .wplm-checkout {
+        padding: 20px;
+        margin: 20px 0;
+    }
+    
+    .wplm-cart-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .wplm-cart-item .item-price {
+        margin: 0;
+    }
+    
+    .wplm-order-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .wplm-notification {
+        left: 20px;
+        right: 20px;
+        max-width: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .wplm-download-content {
+        padding: 15px;
+    }
+    
+    .wplm-add-to-cart-btn {
+        padding: 10px 20px;
+        font-size: 0.9em;
+    }
+    
+    .wplm-checkout h3 {
+        font-size: 1.6em;
+    }
+    
+    .wplm-place-order-btn {
+        padding: 15px 30px;
+        font-size: 1em;
+    }
+}
+
+/* ==========================================================================
+   Dark Mode Support
+   ========================================================================== */
+
+@media (prefers-color-scheme: dark) {
+    .wplm-download-item,
+    .wplm-cart,
+    .wplm-checkout,
+    .wplm-customer-dashboard {
+        background: #2d3748;
+        border-color: #4a5568;
+        color: #e2e8f0;
+    }
+    
+    .wplm-download-content h3,
+    .wplm-cart h3,
+    .wplm-checkout h3,
+    .wplm-checkout h4 {
+        color: #e2e8f0;
+    }
+    
+    .wplm-download-description {
+        color: #a0aec0;
+    }
+    
+    .wplm-billing-details input {
+        background: #4a5568;
+        border-color: #718096;
+        color: #e2e8f0;
+    }
+    
+    .wplm-order-summary {
+        background: #1a202c;
+    }
+    
+    .wplm-license-info {
+        background: #2c5282;
+    }
+    
+    .wplm-license-key {
+        background: #4a5568;
+        border-color: #718096;
+        color: #e2e8f0;
+    }
+}
+
+/* ==========================================================================
+   Accessibility
+   ========================================================================== */
+
+.wplm-add-to-cart-btn:focus,
+.wplm-checkout-btn:focus,
+.wplm-place-order-btn:focus {
+    outline: 3px solid #007cba;
+    outline-offset: 2px;
+}
+
+.wplm-billing-details input:focus {
+    outline: 3px solid #007cba;
+    outline-offset: 2px;
+}
+
+.remove-item:focus {
+    outline: 3px solid #dc3545;
+    outline-offset: 2px;
+}
+
+/* Screen reader only text */
+.wplm-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .wplm-download-item,
+    .wplm-cart,
+    .wplm-checkout {
+        border-width: 2px;
+    }
+    
+    .wplm-add-to-cart-btn,
+    .wplm-checkout-btn,
+    .wplm-place-order-btn {
+        border: 2px solid currentColor;
+    }
+}

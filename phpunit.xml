@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/9.5/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         processIsolation="false"
+         stopOnFailure="false">
+    <testsuites>
+        <testsuite name="WP License Manager Test Suite">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+    <php>
+        <const name="WP_TESTS_DIR" value="./tmp/wordpress-tests-lib"/>
+        <const name="WP_PHP_BINARY" value="php"/>
+        <const name="WP_CORE_DIR" value="./tmp/wordpress/"/>
+        <const name="WP_CONTENT_DIR" value="./tmp/wordpress/wp-content/"/>
+        <const name="WP_PLUGIN_DIR" value="./tmp/wordpress/wp-content/plugins/"/>
+        <const name="WPLM_PLUGIN_FILE" value="./tmp/wordpress/wp-content/plugins/wp-license-manager/wp-license-manager.php"/>
+    </php>
+
+    <!-- Configure filter for coverage -->
+    <coverage processUncoveredFiles="true">
+        <include>
+            <directory suffix=".php">./wp-license-manager/includes</directory>
+            <file>./wp-license-manager/wp-license-manager.php</file>
+        </include>
+        <exclude>
+            <directory suffix=".php">./vendor</directory>
+        </exclude>
+    </coverage>
+</phpunit>
