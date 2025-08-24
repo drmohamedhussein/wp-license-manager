@@ -623,4 +623,98 @@ class WPLM_Advanced_Licensing_Core {
             update_post_meta($post_id, '_wplm_license_type_features', $features);
         }
     }
+
+    /**
+     * Add license type meta box
+     */
+    public function add_license_type_meta_box() {
+        add_meta_box(
+            'wplm_license_type_meta',
+            __('License Type Settings', 'wp-license-manager'),
+            [$this, 'render_license_type_meta_box'],
+            'wplm_license_type',
+            'normal',
+            'high'
+        );
+    }
+
+    /**
+     * Render license type meta box
+     */
+    public function render_license_type_meta_box($post) {
+        // Add nonce for security
+        wp_nonce_field('wplm_save_license_type_meta', 'wplm_license_type_nonce');
+
+        // Get current values
+        $price = get_post_meta($post->ID, '_wplm_license_type_price', true);
+        $duration = get_post_meta($post->ID, '_wplm_license_type_duration', true);
+        $duration_unit = get_post_meta($post->ID, '_wplm_license_type_duration_unit', true);
+        $activation_limit = get_post_meta($post->ID, '_wplm_license_type_activation_limit', true);
+        $features = get_post_meta($post->ID, '_wplm_license_type_features', true);
+
+        if (!is_array($features)) {
+            $features = [];
+        }
+        ?>
+        <table class="form-table">
+            <tr>
+                <th scope="row">
+                    <label for="wplm_license_type_price"><?php esc_html_e('Price', 'wp-license-manager'); ?></label>
+                </th>
+                <td>
+                    <input type="number" id="wplm_license_type_price" name="_wplm_license_type_price" value="<?php echo esc_attr($price); ?>" step="0.01" min="0" class="regular-text" />
+                    <p class="description"><?php esc_html_e('Price for this license type.', 'wp-license-manager'); ?></p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">
+                    <label for="wplm_license_type_duration"><?php esc_html_e('Duration', 'wp-license-manager'); ?></label>
+                </th>
+                <td>
+                    <input type="number" id="wplm_license_type_duration" name="_wplm_license_type_duration" value="<?php echo esc_attr($duration); ?>" min="1" class="small-text" />
+                    <select id="wplm_license_type_duration_unit" name="_wplm_license_type_duration_unit">
+                        <option value="days" <?php selected($duration_unit, 'days'); ?>><?php esc_html_e('Days', 'wp-license-manager'); ?></option>
+                        <option value="weeks" <?php selected($duration_unit, 'weeks'); ?>><?php esc_html_e('Weeks', 'wp-license-manager'); ?></option>
+                        <option value="months" <?php selected($duration_unit, 'months'); ?>><?php esc_html_e('Months', 'wp-license-manager'); ?></option>
+                        <option value="years" <?php selected($duration_unit, 'years'); ?>><?php esc_html_e('Years', 'wp-license-manager'); ?></option>
+                        <option value="lifetime" <?php selected($duration_unit, 'lifetime'); ?>><?php esc_html_e('Lifetime', 'wp-license-manager'); ?></option>
+                    </select>
+                    <p class="description"><?php esc_html_e('Duration of this license type.', 'wp-license-manager'); ?></p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">
+                    <label for="wplm_license_type_activation_limit"><?php esc_html_e('Activation Limit', 'wp-license-manager'); ?></label>
+                </th>
+                <td>
+                    <input type="number" id="wplm_license_type_activation_limit" name="_wplm_license_type_activation_limit" value="<?php echo esc_attr($activation_limit); ?>" min="1" class="small-text" />
+                    <p class="description"><?php esc_html_e('Maximum number of activations allowed (-1 for unlimited).', 'wp-license-manager'); ?></p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row">
+                    <label for="wplm_license_type_features"><?php esc_html_e('Features', 'wp-license-manager'); ?></label>
+                </th>
+                <td>
+                    <div id="wplm_features_container">
+                        <?php
+                        if (!empty($features)) {
+                            foreach ($features as $index => $feature) {
+                                ?>
+                                <div class="wplm_feature_row">
+                                    <input type="text" name="_wplm_license_type_features[]" value="<?php echo esc_attr($feature); ?>" class="regular-text" />
+                                    <button type="button" class="button wplm_remove_feature"><?php esc_html_e('Remove', 'wp-license-manager'); ?></button>
+                                </div>
+                                <?php
+                            }
+                        }
+                        ?>
+                    </div>
+                    <button type="button" class="button wplm_add_feature"><?php esc_html_e('Add Feature', 'wp-license-manager'); ?></button>
+                    <p class="description"><?php esc_html_e('Features included with this license type.', 'wp-license-manager'); ?></p>
+                </td>
+            </tr>
+        </table>
+        <?php
+    }
 }

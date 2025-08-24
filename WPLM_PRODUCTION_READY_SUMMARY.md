@@ -67,6 +67,8 @@ All critical bugs and errors have been fixed. The plugin is now ready for produc
   - `advanced_domain_validation()`
   - `log_security_incident()`
   - **NEW**: `save_license_type_meta()` method added
+  - **NEW**: `add_license_type_meta_box()` method added
+  - **NEW**: `render_license_type_meta_box()` method added
 
 - **Missing Methods**: Added required methods to `WPLM_Enhanced_Admin_Manager_Core`
   - **NEW**: `render_settings_page()` method added
