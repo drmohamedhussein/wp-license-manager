@@ -57,7 +57,7 @@ class WPLM_Advanced_Licensing_Core {
         
         // License usage tracking table
         $usage_table = $wpdb->prefix . 'wplm_license_usage';
-            $charset_collate = $wpdb->get_charset_collate();
+        $charset_collate = $wpdb->get_charset_collate();
             
         $sql_usage = "CREATE TABLE {$usage_table} (
                 id bigint(20) NOT NULL AUTO_INCREMENT,

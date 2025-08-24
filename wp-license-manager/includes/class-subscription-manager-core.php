@@ -505,8 +505,8 @@ class WPLM_Subscription_Manager_Core {
             $wpdb->prepare(
                 "SELECT * FROM {$table_name} 
                 WHERE status = %s 
-                AND end_date IS NOT NULL 
-                AND end_date <= %s",
+                AND next_payment_date IS NOT NULL 
+                AND next_payment_date <= %s",
                 'active',
                 current_time('mysql')
             )
@@ -548,7 +548,7 @@ class WPLM_Subscription_Manager_Core {
                 $subscription->id,
                 'subscription_expired',
                 sprintf(esc_html__('Subscription expired for customer %s', 'wplm'), $subscription->customer_email),
-                ['expiry_date' => $subscription->end_date]
+                ['expiry_date' => $subscription->next_payment_date]
             );
         }
     }

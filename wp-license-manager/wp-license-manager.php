@@ -575,6 +575,25 @@ final class WP_License_Manager {
             KEY status (status)
         ) $charset_collate;";
         
+        // Activity logs table
+        $table_activity_logs = $wpdb->prefix . 'wplm_activity_logs';
+        $sql_activity_logs = "CREATE TABLE $table_activity_logs (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            object_id bigint(20) NOT NULL DEFAULT 0,
+            event_type varchar(100) NOT NULL,
+            description text,
+            data longtext,
+            user_id bigint(20) NOT NULL DEFAULT 0,
+            ip_address varchar(45),
+            user_agent text,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY object_id (object_id),
+            KEY event_type (event_type),
+            KEY user_id (user_id),
+            KEY created_at (created_at)
+        ) $charset_collate;";
+        
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         
         dbDelta($sql_licenses);
@@ -586,6 +605,7 @@ final class WP_License_Manager {
         dbDelta($sql_license_usage);
         dbDelta($sql_security_incidents);
         dbDelta($sql_license_types);
+        dbDelta($sql_activity_logs);
     }
 
     /**
@@ -614,7 +634,7 @@ final class WP_License_Manager {
         $default_license_types = [
             [
                 'name' => 'Personal',
-                'slug' => 'personal',
+                'slug' => 'personal-license',
                 'description' => 'Personal use license',
                 'features' => ['Single domain', 'Basic support'],
                 'price' => 29.99,
@@ -624,7 +644,7 @@ final class WP_License_Manager {
             ],
             [
                 'name' => 'Business',
-                'slug' => 'business',
+                'slug' => 'business-license',
                 'description' => 'Business use license',
                 'features' => ['Up to 5 domains', 'Priority support', 'Updates'],
                 'price' => 99.99,
@@ -634,7 +654,7 @@ final class WP_License_Manager {
             ],
             [
                 'name' => 'Developer',
-                'slug' => 'developer',
+                'slug' => 'developer-license',
                 'description' => 'Developer license',
                 'features' => ['Unlimited domains', 'Priority support', 'Updates', 'Source code'],
                 'price' => 199.99,
@@ -644,7 +664,7 @@ final class WP_License_Manager {
             ],
             [
                 'name' => 'Lifetime',
-                'slug' => 'lifetime',
+                'slug' => 'lifetime-license',
                 'description' => 'Lifetime license',
                 'features' => ['Unlimited domains', 'Lifetime support', 'Lifetime updates'],
                 'price' => 499.99,
@@ -654,7 +674,11 @@ final class WP_License_Manager {
             ]
         ];
         
-        update_option('wplm_license_types', $default_license_types);
+        // Check if license types already exist to avoid duplicates
+        $existing_types = get_option('wplm_license_types', []);
+        if (empty($existing_types)) {
+            update_option('wplm_license_types', $default_license_types);
+        }
     }
 
     /**
