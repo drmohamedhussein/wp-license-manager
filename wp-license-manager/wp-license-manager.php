@@ -33,9 +33,7 @@ if (version_compare(PHP_VERSION, '7.4', '<')) {
             '7.4',
             PHP_VERSION
         );
-        add_action('admin_notices', function() use ($message) {
-            echo '<div class="notice notice-error"><p>' . esc_html($message) . '</p></div>';
-        });
+        echo '<div class="notice notice-error"><p>' . esc_html($message) . '</p></div>';
     });
     return; // Stop plugin execution
 }
