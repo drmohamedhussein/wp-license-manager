@@ -229,6 +229,294 @@ class WPLM_Advanced_Licensing_Core {
     }
 
     /**
+     * Add security payload to license check requests
+     */
+    public function add_security_payload($payload, $license_key) {
+        if (!is_array($payload)) {
+            $payload = [];
+        }
+        
+        // Add timestamp for request validation
+        $payload['timestamp'] = time();
+        
+        // Add client fingerprint if available
+        $payload['client_fingerprint'] = $this->generate_client_fingerprint();
+        
+        // Add request hash for integrity
+        $payload['request_hash'] = $this->generate_request_hash($payload, $license_key);
+        
+        return $payload;
+    }
+
+    /**
+     * Generate client fingerprint
+     */
+    private function generate_client_fingerprint() {
+        $components = [
+            $_SERVER['HTTP_USER_AGENT'] ?? '',
+            $_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? '',
+            $_SERVER['HTTP_ACCEPT_ENCODING'] ?? '',
+            $this->get_client_ip()
+        ];
+        
+        return hash('sha256', implode('|', $components));
+    }
+
+    /**
+     * Generate request hash for integrity
+     */
+    private function generate_request_hash($payload, $license_key) {
+        $data = $license_key . '|' . json_encode($payload) . '|' . $this->encryption_key;
+        return hash('sha256', $data);
+    }
+
+    /**
+     * Enhanced license validation
+     */
+    public function enhanced_license_validation($is_valid, $license_key, $domain) {
+        // Basic validation already passed, add advanced checks
+        if (!$is_valid) {
+            return false;
+        }
+        
+        // Check rate limiting
+        if (!$this->check_rate_limit($license_key, $domain)) {
+            return false;
+        }
+        
+        // Check IP restrictions
+        if (!$this->check_ip_restrictions($license_key, $domain)) {
+            return false;
+        }
+        
+        return true;
+    }
+
+    /**
+     * Track license usage
+     */
+    public function track_license_usage($license_id, $domain) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'wplm_license_usage';
+        
+        $data = [
+            'license_key' => get_the_title($license_id),
+            'domain' => sanitize_text_field($domain),
+            'ip_address' => $this->get_client_ip(),
+            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
+            'fingerprint' => $this->generate_client_fingerprint(),
+            'last_check' => current_time('mysql'),
+            'check_count' => 1,
+            'status' => 'active'
+        ];
+        
+        $wpdb->insert($table, $data);
+    }
+
+    /**
+     * Handle suspicious activity
+     */
+    public function handle_suspicious_activity($license_key, $activity_type, $details) {
+        $this->log_security_incident($license_key, $activity_type, 'high', $details);
+        
+        // Log to activity logger if available
+        if (class_exists('WPLM_Activity_Logger')) {
+            WPLM_Activity_Logger::log(0, 'suspicious_activity', $details, ['license_key' => $license_key, 'type' => $activity_type]);
+        }
+    }
+
+    /**
+     * Generate advanced fingerprint
+     */
+    public function generate_advanced_fingerprint($base_fingerprint, $license_key) {
+        $components = [
+            $base_fingerprint,
+            $license_key,
+            $this->encryption_key,
+            time()
+        ];
+        
+        return hash('sha256', implode('|', $components));
+    }
+
+    /**
+     * Perform license health check
+     */
+    public function perform_license_health_check() {
+        // Check for expired licenses
+        $expired_licenses = get_posts([
+            'post_type' => 'wplm_license',
+            'meta_key' => '_wplm_expiry_date',
+            'meta_value' => current_time('mysql'),
+            'meta_compare' => '<',
+            'posts_per_page' => -1,
+            'fields' => 'ids'
+        ]);
+        
+        foreach ($expired_licenses as $license_id) {
+            update_post_meta($license_id, '_wplm_status', 'expired');
+        }
+    }
+
+    /**
+     * Check rate limiting
+     */
+    public function check_rate_limit($license_key, $domain) {
+        $key = 'wplm_rate_limit_' . md5($license_key . $domain);
+        $count = get_transient($key) ?: 0;
+        
+        if ($count > 100) { // Max 100 requests per hour
+            return false;
+        }
+        
+        set_transient($key, $count + 1, HOUR_IN_SECONDS);
+        return true;
+    }
+
+    /**
+     * Check IP restrictions
+     */
+    public function check_ip_restrictions($license_key, $domain) {
+        $client_ip = $this->get_client_ip();
+        
+        // Check blacklist
+        $blacklist = get_option('wplm_ip_blacklist', []);
+        if (in_array($client_ip, $blacklist)) {
+            return false;
+        }
+        
+        // Check whitelist if enabled
+        $whitelist = get_option('wplm_ip_whitelist', []);
+        if (!empty($whitelist) && !in_array($client_ip, $whitelist)) {
+            return false;
+        }
+        
+        return true;
+    }
+
+    /**
+     * Advanced domain validation
+     */
+    public function advanced_domain_validation($is_valid, $domain, $license_key) {
+        if (!$is_valid) {
+            return false;
+        }
+        
+        // Check for suspicious domain patterns
+        $suspicious_patterns = ['localhost', '127.0.0.1', '0.0.0.0', 'test', 'demo'];
+        foreach ($suspicious_patterns as $pattern) {
+            if (stripos($domain, $pattern) !== false) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+    /**
+     * Log security incident
+     */
+    private function log_security_incident($license_key, $incident_type, $severity, $description, $additional_data = []) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'wplm_security_incidents';
+        
+        $data = [
+            'license_key' => sanitize_text_field($license_key),
+            'incident_type' => sanitize_key($incident_type),
+            'severity' => sanitize_key($severity),
+            'description' => sanitize_textarea_field($description),
+            'ip_address' => $this->get_client_ip(),
+            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
+            'additional_data' => json_encode($additional_data),
+            'status' => 'active'
+        ];
+        
+        $wpdb->insert($table, $data);
+    }
+
+    /**
+     * Get encryption key for secure operations
+     */
+    private function get_encryption_key() {
+        $key = get_option('wplm_encryption_key', '');
+        
+        if (empty($key)) {
+            // Generate a new encryption key if none exists
+            if (function_exists('random_bytes')) {
+                $key = bin2hex(random_bytes(32)); // 64 character hex string
+            } else {
+                // Fallback for older PHP versions
+                $key = md5(uniqid(mt_rand(), true)) . md5(uniqid(mt_rand(), true));
+            }
+            
+            // Store the key
+            update_option('wplm_encryption_key', $key);
+        }
+        
+        return $key;
+    }
+
+    /**
+     * Sanitize recursive data structures
+     */
+    private function sanitize_recursive_data($data) {
+        if (is_array($data)) {
+            return array_map([$this, 'sanitize_recursive_data'], $data);
+        } elseif (is_string($data)) {
+            return sanitize_text_field($data);
+        } elseif (is_numeric($data)) {
+            return is_float($data) ? floatval($data) : intval($data);
+        } elseif (is_bool($data)) {
+            return (bool) $data;
+        }
+        return $data;
+    }
+
+    /**
+     * Get license type information
+     */
+    private function get_license_type($type_id) {
+        if (empty($type_id)) {
+            return null;
+        }
+        
+        global $wpdb;
+        $table = $wpdb->prefix . 'wplm_license_types';
+        return $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE id = %d", absint($type_id)));
+    }
+
+    /**
+     * Get license features
+     */
+    private function get_license_features($license_id) {
+        $features = get_post_meta($license_id, '_wplm_features', true);
+        if (is_array($features)) {
+            return array_map('sanitize_text_field', $features);
+        }
+        return [];
+    }
+
+    /**
+     * Get client IP address
+     */
+    private function get_client_ip() {
+        $ip_keys = ['HTTP_CLIENT_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR'];
+        
+        foreach ($ip_keys as $key) {
+            if (array_key_exists($key, $_SERVER) === true) {
+                foreach (explode(',', $_SERVER[$key]) as $ip) {
+                    $ip = trim($ip);
+                    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
+                        return $ip;
+                    }
+                }
+            }
+        }
+        
+        return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+    }
+
+    /**
      * Get license information
      */
     private function get_license_info($license_key) {
