@@ -257,4 +257,94 @@ class WPLM_Enhanced_Admin_Manager_Core {
         </div>
         <?php
     }
+
+    /**
+     * Render plugin name field
+     */
+    public function render_plugin_name_field() {
+        $value = get_option('wplm_plugin_name', 'WP License Manager');
+        ?>
+        <input type="text" id="wplm_plugin_name" name="wplm_plugin_name" value="<?php echo esc_attr($value); ?>" class="regular-text" />
+        <p class="description"><?php esc_html_e('The name of your license management system.', 'wp-license-manager'); ?></p>
+        <?php
+    }
+
+    /**
+     * Render duration field
+     */
+    public function render_duration_field() {
+        $duration_type = get_option('wplm_default_duration_type', 'days');
+        $duration_value = get_option('wplm_default_duration_value', '365');
+        ?>
+        <input type="number" id="wplm_default_duration_value" name="wplm_default_duration_value" value="<?php echo esc_attr($duration_value); ?>" class="small-text" min="1" />
+        <select id="wplm_default_duration_type" name="wplm_default_duration_type">
+            <option value="days" <?php selected($duration_type, 'days'); ?>><?php esc_html_e('Days', 'wp-license-manager'); ?></option>
+            <option value="weeks" <?php selected($duration_type, 'weeks'); ?>><?php esc_html_e('Weeks', 'wp-license-manager'); ?></option>
+            <option value="months" <?php selected($duration_type, 'months'); ?>><?php esc_html_e('Months', 'wp-license-manager'); ?></option>
+            <option value="years" <?php selected($duration_type, 'years'); ?>><?php esc_html_e('Years', 'wp-license-manager'); ?></option>
+        </select>
+        <p class="description"><?php esc_html_e('Default license duration for new licenses.', 'wp-license-manager'); ?></p>
+        <?php
+    }
+
+    /**
+     * Render activation limit field
+     */
+    public function render_activation_limit_field() {
+        $value = get_option('wplm_default_activation_limit', '1');
+        ?>
+        <input type="number" id="wplm_default_activation_limit" name="wplm_default_activation_limit" value="<?php echo esc_attr($value); ?>" class="small-text" min="1" />
+        <p class="description"><?php esc_html_e('Default activation limit for new licenses.', 'wp-license-manager'); ?></p>
+        <?php
+    }
+
+    /**
+     * Render license key format field
+     */
+    public function render_license_key_format_field() {
+        $value = get_option('wplm_license_key_format', 'XXXX-XXXX-XXXX-XXXX');
+        ?>
+        <input type="text" id="wplm_license_key_format" name="wplm_license_key_format" value="<?php echo esc_attr($value); ?>" class="regular-text" />
+        <p class="description"><?php esc_html_e('Format for license keys (use X for random characters).', 'wp-license-manager'); ?></p>
+        <?php
+    }
+
+    /**
+     * Render email notifications field
+     */
+    public function render_email_notifications_field() {
+        $value = get_option('wplm_email_notifications_enabled', '1');
+        ?>
+        <label>
+            <input type="checkbox" id="wplm_email_notifications_enabled" name="wplm_email_notifications_enabled" value="1" <?php checked($value, '1'); ?> />
+            <?php esc_html_e('Enable email notifications for license events.', 'wp-license-manager'); ?>
+        </label>
+        <?php
+    }
+
+    /**
+     * Render REST API field
+     */
+    public function render_rest_api_field() {
+        $value = get_option('wplm_rest_api_enabled', '1');
+        ?>
+        <label>
+            <input type="checkbox" id="wplm_rest_api_enabled" name="wplm_rest_api_enabled" value="1" <?php checked($value, '1'); ?> />
+            <?php esc_html_e('Enable REST API for license validation.', 'wp-license-manager'); ?>
+        </label>
+        <?php
+    }
+
+    /**
+     * Render delete on uninstall field
+     */
+    public function render_delete_on_uninstall_field() {
+        $value = get_option('wplm_delete_on_uninstall', '0');
+        ?>
+        <label>
+            <input type="checkbox" id="wplm_delete_on_uninstall" name="wplm_delete_on_uninstall" value="1" <?php checked($value, '1'); ?> />
+            <?php esc_html_e('Delete all plugin data when uninstalling (WARNING: This cannot be undone).', 'wp-license-manager'); ?>
+        </label>
+        <?php
+    }
 }

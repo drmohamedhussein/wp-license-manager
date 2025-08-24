@@ -68,8 +68,15 @@ All critical bugs and errors have been fixed. The plugin is now ready for produc
   - `log_security_incident()`
   - **NEW**: `save_license_type_meta()` method added
 
-- **Missing Methods**: Added required method to `WPLM_Enhanced_Admin_Manager_Core`
+- **Missing Methods**: Added required methods to `WPLM_Enhanced_Admin_Manager_Core`
   - **NEW**: `render_settings_page()` method added
+  - **NEW**: `render_plugin_name_field()` method added
+  - **NEW**: `render_duration_field()` method added
+  - **NEW**: `render_activation_limit_field()` method added
+  - **NEW**: `render_license_key_format_field()` method added
+  - **NEW**: `render_email_notifications_field()` method added
+  - **NEW**: `render_rest_api_field()` method added
+  - **NEW**: `render_delete_on_uninstall_field()` method added
 
 ## 🏗️ Architecture Improvements
 
