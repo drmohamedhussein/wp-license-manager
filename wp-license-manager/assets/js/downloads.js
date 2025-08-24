@@ -23,7 +23,7 @@ jQuery(document).ready(function($) {
             data: {
                 action: 'wplm_add_to_cart',
                 download_id: downloadId,
-                nonce: wplm_downloads.nonce
+                nonce: wplm_downloads.add_to_cart_nonce
             },
             success: function(response) {
                 if (response.success) {
@@ -64,7 +64,7 @@ jQuery(document).ready(function($) {
             data: {
                 action: 'wplm_remove_from_cart',
                 download_id: downloadId,
-                nonce: wplm_downloads.nonce
+                nonce: wplm_downloads.remove_from_cart_nonce
             },
             success: function(response) {
                 if (response.success) {
@@ -97,7 +97,7 @@ jQuery(document).ready(function($) {
         $submitButton.text('Processing...').prop('disabled', true);
         
         var formData = $form.serialize();
-        formData += '&action=wplm_process_checkout&nonce=' + wplm_downloads.nonce;
+        formData += '&action=wplm_process_checkout&nonce=' + wplm_downloads.process_checkout_nonce;
         
         $.ajax({
             url: wplm_downloads.ajax_url,
@@ -135,7 +135,7 @@ jQuery(document).ready(function($) {
             type: 'POST',
             data: {
                 action: 'wplm_get_cart_count',
-                nonce: wplm_downloads.nonce
+                nonce: wplm_downloads.wplm_downloads_nonce
             },
             success: function(response) {
                 if (response.success) {

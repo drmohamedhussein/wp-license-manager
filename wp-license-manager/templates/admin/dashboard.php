@@ -5,9 +5,19 @@ if (!defined('ABSPATH')) {
 
 // Get dashboard statistics
 $stats = $this->get_dashboard_stats();
+
+// Localize script with dashboard stats
+wp_localize_script('wplm-admin-script', 'wplm_dashboard_vars', [
+    'stats' => [
+        'active_licenses' => $stats['active_licenses'],
+        'inactive_licenses' => $stats['inactive_licenses'],
+        'expired_licenses' => $stats['expired_licenses'],
+    ],
+]);
 ?>
 
 <div class="wplm-dashboard-wrap">
+    <div class="wplm-admin-notices"></div> <!-- Unified notification area -->
     <div class="wplm-header">
         <h1 class="wplm-page-title">
             <span class="dashicons dashicons-dashboard"></span>

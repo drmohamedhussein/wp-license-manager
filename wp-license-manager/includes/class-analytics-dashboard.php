@@ -231,9 +231,9 @@ class WPLM_Analytics_Dashboard {
                                     <tr>
                                         <th><?php _e('Date', 'wp-license-manager'); ?></th>
                                         <th><?php _e('Action', 'wp-license-manager'); ?></th>
-                                        <th><?php _e('License', 'wp-license-manager'); ?></th>
+                                        <th><?php _e('Associated Object', 'wp-license-manager'); ?></th>
                                         <th><?php _e('User/Customer', 'wp-license-manager'); ?></th>
-                                        <th><?php _e('Details', 'wp-license-manager'); ?></th>
+                                        <th><?php _e('Description', 'wp-license-manager'); ?></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -678,14 +678,47 @@ class WPLM_Analytics_Dashboard {
      * Get activation activity data
      */
     private function get_activation_activity_data($date_range) {
-        // This would require activity logging to be implemented
-        // For now, return sample data
+        global $wpdb;
+
+        $start_timestamp = strtotime($date_range['start'] . ' 00:00:00');
+        $end_timestamp = strtotime($date_range['end'] . ' 23:59:59');
+
+        $activations = [];
+
+        // Query all license posts
+        $licenses = get_posts([
+            'post_type' => 'wplm_license',
+            'posts_per_page' => -1,
+            'post_status' => 'publish',
+            'fields' => 'ids',
+        ]);
+
+        foreach ($licenses as $license_id) {
+            $activity_log = get_post_meta($license_id, '_wplm_activity_log', true);
+            if (is_array($activity_log)) {
+                foreach ($activity_log as $log_entry) {
+                    if (isset($log_entry['action']) && $log_entry['action'] === 'license_activated' && isset($log_entry['timestamp'])) {
+                        $log_timestamp = strtotime($log_entry['timestamp']);
+                        if ($log_timestamp >= $start_timestamp && $log_timestamp <= $end_timestamp) {
+                            $date = date('Y-m-d', $log_timestamp);
+                            $activations[$date] = ($activations[$date] ?? 0) + 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        ksort($activations); // Sort by date
+
+        $labels = array_keys($activations);
+        $data = array_values($activations);
+
         return [
-            'labels' => [],
+            'labels' => $labels,
             'datasets' => [
                 [
                     'label' => __('Activations', 'wp-license-manager'),
-                    'data' => [],
+                    'data' => $data,
                     'borderColor' => 'rgb(40, 167, 69)',
                     'backgroundColor' => 'rgba(40, 167, 69, 0.1)',
                     'fill' => true
@@ -727,7 +760,7 @@ class WPLM_Analytics_Dashboard {
             
             $data[] = [
                 'license_key' => $row->license_key,
-                'product' => $row->product_id ?: '-',
+                'product' => get_the_title($row->product_id) ?: '-',
                 'customer' => $row->customer_email ?: '-',
                 'status' => ucfirst($row->status ?: 'inactive'),
                 'activations' => $activations_count,
@@ -763,7 +796,7 @@ class WPLM_Analytics_Dashboard {
         $data = [];
         foreach ($results as $row) {
             $data[] = [
-                'product' => $row->product_id,
+                'product' => get_the_title($row->product_id) ?: 'N/A',
                 'total_licenses' => intval($row->total_licenses),
                 'active_licenses' => intval($row->active_licenses),
                 'expired_licenses' => intval($row->expired_licenses),
@@ -785,10 +818,12 @@ class WPLM_Analytics_Dashboard {
             "SELECT pm.meta_value as customer_email,
                     COUNT(*) as total_licenses,
                     SUM(CASE WHEN pm2.meta_value = 'active' THEN 1 ELSE 0 END) as active_licenses,
-                    MIN(p.post_date) as join_date
+                    MIN(p.post_date) as join_date,
+                    MAX(CASE WHEN pm3.meta_key = '_wplm_customer_id' THEN pm3.meta_value END) as customer_id
              FROM {$wpdb->posts} p
              INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_wplm_customer_email'
              LEFT JOIN {$wpdb->postmeta} pm2 ON p.ID = pm2.post_id AND pm2.meta_key = '_wplm_status'
+             LEFT JOIN {$wpdb->postmeta} pm3 ON p.ID = pm3.post_id AND pm3.meta_key = '_wplm_customer_id'
              WHERE p.post_type = 'wplm_license'
              AND p.post_status = 'publish'
              AND pm.meta_value != ''
@@ -799,8 +834,9 @@ class WPLM_Analytics_Dashboard {
 
         $data = [];
         foreach ($results as $row) {
+            $customer_name = $row->customer_id ? get_the_title($row->customer_id) : $row->customer_email;
             $data[] = [
-                'customer' => $row->customer_email,
+                'customer' => $customer_name,
                 'total_licenses' => intval($row->total_licenses),
                 'active_licenses' => intval($row->active_licenses),
                 'total_spent' => function_exists('wc_price') ? wc_price(0) : '$0',
@@ -814,10 +850,77 @@ class WPLM_Analytics_Dashboard {
 
     /**
      * Get activity report data
+     * Aggregates activity logs from licenses, products, customers, and subscriptions.
      */
     private function get_activity_report_data($date_range) {
-        // This would require the activity logger
-        // Return empty for now
-        return [];
+        global $wpdb;
+
+        $start_timestamp = strtotime($date_range['start'] . ' 00:00:00');
+        $end_timestamp = strtotime($date_range['end'] . ' 23:59:59');
+
+        $all_logs = [];
+
+        $post_types = ['wplm_license', 'wplm_product', 'wplm_customer', 'wplm_subscription'];
+
+        foreach ($post_types as $post_type) {
+            $posts = get_posts([
+                'post_type' => $post_type,
+                'posts_per_page' => -1,
+                'post_status' => 'publish',
+                'fields' => 'ids',
+            ]);
+
+            foreach ($posts as $post_id) {
+                $activity_log = get_post_meta($post_id, '_wplm_activity_log', true);
+                if (is_array($activity_log)) {
+                    foreach ($activity_log as $log_entry) {
+                        if (isset($log_entry['timestamp'])) {
+                            $log_timestamp = strtotime($log_entry['timestamp']);
+                            if ($log_timestamp >= $start_timestamp && $log_timestamp <= $end_timestamp) {
+                                $object_title = get_the_title($log_entry['object_id']) ?: __('N/A', 'wp-license-manager');
+                                $object_type = get_post_type($log_entry['object_id']);
+                                $object_link = admin_url(sprintf('post.php?post=%d&action=edit', $log_entry['object_id']));
+                                
+                                $user_display_name = __('Guest', 'wp-license-manager');
+                                if (!empty($log_entry['user_id'])) {
+                                    $user_display_name = $this->get_user_display_name($log_entry['user_id']);
+                                }
+
+                                $all_logs[] = [
+                                    'date' => date('Y-m-d H:i:s', $log_timestamp),
+                                    'action' => $log_entry['action'] ?? __('Unknown', 'wp-license-manager'),
+                                    'object_id' => $log_entry['object_id'],
+                                    'object_title' => $object_title,
+                                    'object_type' => $object_type,
+                                    'object_link' => $object_link,
+                                    'user' => $user_display_name,
+                                    'description' => $log_entry['description'] ?? '',
+                                    'full_details' => $log_entry['details'] ?? [],
+                                    'timestamp' => $log_timestamp,
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sort logs by timestamp in descending order
+        usort($all_logs, function($a, $b) {
+            return $b['timestamp'] <=> $a['timestamp'];
+        });
+
+        return $all_logs;
+    }
+
+    /**
+     * Helper to get user display name.
+     *
+     * @param int $user_id The user ID.
+     * @return string The user's display name or 'Guest'.
+     */
+    private function get_user_display_name(int $user_id): string {
+        $user = get_user_by('id', $user_id);
+        return $user ? $user->display_name : __('Guest', 'wp-license-manager');
     }
 }

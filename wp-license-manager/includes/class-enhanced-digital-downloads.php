@@ -463,7 +463,7 @@ class WPLM_Enhanced_Digital_Downloads {
      * AJAX: Add to cart
      */
     public function ajax_add_to_cart() {
-        check_ajax_referer('wplm_downloads_nonce', 'nonce');
+        check_ajax_referer('wplm_add_to_cart', 'nonce');
         
         $download_id = intval($_POST['download_id']);
         
@@ -486,7 +486,7 @@ class WPLM_Enhanced_Digital_Downloads {
      * AJAX: Remove from cart
      */
     public function ajax_remove_from_cart() {
-        check_ajax_referer('wplm_downloads_nonce', 'nonce');
+        check_ajax_referer('wplm_remove_from_cart', 'nonce');
         
         $download_id = intval($_POST['download_id']);
         
@@ -510,7 +510,7 @@ class WPLM_Enhanced_Digital_Downloads {
      * AJAX: Process checkout
      */
     public function ajax_process_checkout() {
-        check_ajax_referer('wplm_downloads_nonce', 'nonce');
+        check_ajax_referer('wplm_process_checkout', 'nonce');
         
         $cart_items = $this->get_cart_items();
         
@@ -659,12 +659,15 @@ class WPLM_Enhanced_Digital_Downloads {
      * Enqueue frontend scripts
      */
     public function enqueue_frontend_scripts() {
-        wp_enqueue_script('wplm-downloads', plugin_dir_url(WPLM_PLUGIN_FILE) . 'assets/js/downloads.js', ['jquery'], WPLM_VERSION, true);
-        wp_enqueue_style('wplm-downloads', plugin_dir_url(WPLM_PLUGIN_FILE) . 'assets/css/downloads.css', [], WPLM_VERSION);
+        wp_enqueue_script('wplm-downloads', WPLM_URL . 'assets/js/downloads.js', ['jquery'], WPLM_VERSION, true);
+        wp_enqueue_style('wplm-downloads', WPLM_URL . 'assets/css/downloads.css', [], WPLM_VERSION);
         
         wp_localize_script('wplm-downloads', 'wplm_downloads', [
             'ajax_url' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('wplm_downloads_nonce')
+            'add_to_cart_nonce' => wp_create_nonce('wplm_add_to_cart'),
+            'remove_from_cart_nonce' => wp_create_nonce('wplm_remove_from_cart'),
+            'process_checkout_nonce' => wp_create_nonce('wplm_process_checkout'),
+            'wplm_downloads_nonce' => wp_create_nonce('wplm_downloads_nonce'), // Keep this for existing shortcodes if used
         ]);
     }
 
@@ -680,14 +683,27 @@ class WPLM_Enhanced_Digital_Downloads {
         ));
         
         foreach ($orders as $order) {
-            $order->items = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM {$wpdb->prefix}wplm_order_items WHERE order_id = %d",
-                $order->id
-            ));
+            // Initialize items array to prevent errors if no items are found
+            $order->items = []; 
         }
         
-        return $orders;
-    }
+        if (!empty($orders)) {
+            $order_ids = wp_list_pluck($orders, 'id');
+            $order_ids_placeholder = implode(', ', array_fill(0, count($order_ids), '%d'));
+            $order_items = $wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}wplm_order_items WHERE order_id IN ($order_ids_placeholder)",
+                ...$order_ids
+            ));
+
+            foreach ($orders as $order) {
+                $order->items = array_filter($order_items, function($item) use ($order) {
+                    return (int) $item->order_id === (int) $order->id;
+                });
+            }
+         }
+
+         return $orders;
+     }
 
     /**
      * Render customer dashboard
@@ -757,12 +773,15 @@ class WPLM_Enhanced_Digital_Downloads {
 class WPLM_PayPal_Gateway {
     public function process_payment($order_id) {
         // Simplified PayPal integration
+        // In a real scenario, this would integrate with PayPal's API.
+        // For now, it just simulates a successful payment.
         return ['success' => true, 'message' => 'PayPal payment processed'];
     }
 }
 
 class WPLM_Test_Gateway {
     public function process_payment($order_id) {
+        // Simple test gateway for development
         return ['success' => true, 'message' => 'Test payment processed'];
     }
 }

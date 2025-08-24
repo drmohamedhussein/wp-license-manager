@@ -465,9 +465,17 @@ Thank you!', 'wp-license-manager'),
         $license_keys = get_post_meta($subscription_id, '_wplm_license_keys', true);
         if (is_array($license_keys)) {
             foreach ($license_keys as $license_key) {
-                $license_post = get_page_by_title($license_key, OBJECT, 'wplm_license');
-                if ($license_post) {
-                    update_post_meta($license_post->ID, '_wplm_status', 'expired');
+                $license_posts_query = new WP_Query([
+                    'post_type'      => 'wplm_license',
+                    'posts_per_page' => 1,
+                    'title'          => $license_key,
+                    'fields'         => 'ids',
+                    'exact'          => true,
+                ]);
+                $license_post_id = $license_posts_query->posts[0] ?? null;
+
+                if ($license_post_id) {
+                    update_post_meta($license_post_id, '_wplm_status', 'expired');
                 }
             }
         }

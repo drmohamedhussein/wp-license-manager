@@ -44,7 +44,7 @@ class WPLM_Enhanced_API_Manager {
             $api_key = $request->get_header('x-wplm-api-key');
             $stored_api_key = get_option('wplm_api_key');
 
-            if (empty($api_key) || $api_key !== $stored_api_key) {
+            if (empty($api_key) || !hash_equals($api_key, $stored_api_key)) {
                 return new WP_Error(
                     'wplm_api_unauthorized',
                     __('Unauthorized API Key.', 'wp-license-manager'),
@@ -70,28 +70,43 @@ class WPLM_Enhanced_API_Manager {
                 'license_key' => [
                     'required' => true,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function($value) {
+                        return (bool) preg_match('/^[A-Z0-9]{4}(?:-[A-Z0-9]{4}){4}$/', $value); // Example: XXXX-XXXX-XXXX-XXXX-XXXX
+                    },
                 ],
                 'domain' => [
                     'required' => true,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
+                    'sanitize_callback' => 'sanitize_url',
+                    'validate_callback' => function($value) {
+                        return (bool) filter_var('http://' . $value, FILTER_VALIDATE_URL);
+                    },
                 ],
                 'product_id' => [
                     'required' => false,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function($value) {
+                        return (bool) get_post($value) && get_post_type($value) === 'wplm_product';
+                    },
                 ],
                 'version' => [
                     'required' => false,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function($value) {
+                        return (bool) preg_match('/^\d+\.\d+(\.\d+)?$/', $value); // Basic semantic versioning
+                    },
                 ],
                 'fingerprint' => [
                     'required' => false,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
-                ]
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function($value) {
+                        return (bool) preg_match('/^[0-9a-fA-F]{64}$/', $value); // SHA256 hex string
+                    },
+                ],
             ]
         ]);
         
@@ -104,16 +119,23 @@ class WPLM_Enhanced_API_Manager {
                 'license_key' => [
                     'required' => true,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function($value) {
+                        return (bool) preg_match('/^[A-Z0-9]{4}(?:-[A-Z0-9]{4}){4}$/', $value); // Example: XXXX-XXXX-XXXX-XXXX-XXXX
+                    },
                 ],
                 'domain' => [
                     'required' => true,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
+                    'sanitize_callback' => 'sanitize_url',
+                    'validate_callback' => function($value) {
+                        return (bool) filter_var('http://' . $value, FILTER_VALIDATE_URL);
+                    },
                 ],
                 'site_info' => [
                     'required' => false,
-                    'type' => 'object'
+                    'type' => 'object',
+                    // Sanitize recursively if object structure is known
                 ]
             ]
         ]);
@@ -127,12 +149,18 @@ class WPLM_Enhanced_API_Manager {
                 'license_key' => [
                     'required' => true,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function($value) {
+                        return (bool) preg_match('/^[A-Z0-9]{4}(?:-[A-Z0-9]{4}){4}$/', $value); // Example: XXXX-XXXX-XXXX-XXXX-XXXX
+                    },
                 ],
                 'domain' => [
                     'required' => true,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
+                    'sanitize_callback' => 'sanitize_url',
+                    'validate_callback' => function($value) {
+                        return (bool) filter_var('http://' . $value, FILTER_VALIDATE_URL);
+                    },
                 ]
             ]
         ]);
@@ -146,18 +174,27 @@ class WPLM_Enhanced_API_Manager {
                 'license_key' => [
                     'required' => true,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function($value) {
+                        return (bool) preg_match('/^[A-Z0-9]{4}(?:-[A-Z0-9]{4}){4}$/', $value); // Example: XXXX-XXXX-XXXX-XXXX-XXXX
+                    },
                 ],
                 'product_id' => [
                     'required' => true,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function($value) {
+                        return (bool) get_post($value) && get_post_type($value) === 'wplm_product';
+                    },
                 ],
                 'current_version' => [
                     'required' => true,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
-                ]
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function($value) {
+                        return (bool) preg_match('/^\d+\.\d+(\.\d+)?$/', $value); // Basic semantic versioning
+                    },
+                ],
             ]
         ]);
         
@@ -170,17 +207,26 @@ class WPLM_Enhanced_API_Manager {
                 'license_key' => [
                     'required' => true,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function($value) {
+                        return (bool) preg_match('/^[A-Z0-9]{4}(?:-[A-Z0-9]{4}){4}$/', $value); // Example: XXXX-XXXX-XXXX-XXXX-XXXX
+                    },
                 ],
                 'product_id' => [
                     'required' => true,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function($value) {
+                        return (bool) get_post($value) && get_post_type($value) === 'wplm_product';
+                    },
                 ],
                 'download_token' => [
                     'required' => false,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function($value) {
+                        return (bool) preg_match('/^[0-9a-fA-F]{64}$/', $value); // SHA256 hex string
+                    },
                 ]
             ]
         ]);
@@ -194,7 +240,10 @@ class WPLM_Enhanced_API_Manager {
                 'license_key' => [
                     'required' => true,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function($value) {
+                        return (bool) preg_match('/^[A-Z0-9]{4}(?:-[A-Z0-9]{4}){4}$/', $value); // Example: XXXX-XXXX-XXXX-XXXX-XXXX
+                    },
                 ]
             ]
         ]);
@@ -208,16 +257,23 @@ class WPLM_Enhanced_API_Manager {
                 'license_key' => [
                     'required' => true,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function($value) {
+                        return (bool) preg_match('/^[A-Z0-9]{4}(?:-[A-Z0-9]{4}){4}$/', $value); // Example: XXXX-XXXX-XXXX-XXXX-XXXX
+                    },
                 ],
                 'domain' => [
                     'required' => true,
                     'type' => 'string',
-                    'sanitize_callback' => 'sanitize_text_field'
+                    'sanitize_callback' => 'sanitize_url',
+                    'validate_callback' => function($value) {
+                        return (bool) filter_var('http://' . $value, FILTER_VALIDATE_URL);
+                    },
                 ],
                 'stats' => [
                     'required' => false,
-                    'type' => 'object'
+                    'type' => 'object',
+                    // Implement a more specific sanitize_callback and validate_callback for stats object if its structure is known
                 ]
             ]
         ]);
@@ -250,44 +306,54 @@ class WPLM_Enhanced_API_Manager {
         
         // Find license
         $license_post = get_page_by_title($license_key, OBJECT, 'wplm_license');
-        if (!$license_post) {
+        if (!$license_post || is_wp_error($license_post)) {
             $this->log_failed_attempt($license_key, 'invalid_license', $domain);
-            return $this->error_response('INVALID_LICENSE', 'License key not found.');
+            return $this->error_response('INVALID_LICENSE', __('License key not found or is invalid.', 'wp-license-manager'));
         }
         
         // Check license status
         $status = get_post_meta($license_post->ID, '_wplm_status', true);
-        if ($status !== 'active') {
-            return $this->error_response('LICENSE_INACTIVE', 'License is not active.');
+        $allowed_statuses = ['active']; // Only 'active' is considered valid for validation
+        if (!in_array($status, $allowed_statuses, true)) {
+            return $this->error_response('LICENSE_INACTIVE', __('License is not active or has an invalid status.', 'wp-license-manager'));
         }
         
         // Check expiry
         $expiry_date = get_post_meta($license_post->ID, '_wplm_expiry_date', true);
-        if (!empty($expiry_date) && strtotime($expiry_date) < time()) {
-            return $this->error_response('LICENSE_EXPIRED', 'License has expired.');
+        if (!empty($expiry_date)) {
+            $expiry_timestamp = strtotime($expiry_date);
+            if ($expiry_timestamp === false) {
+                $this->log_error('Invalid expiry date format for license ' . $license_key . ': ' . $expiry_date);
+                return $this->error_response('INVALID_EXPIRY_DATE_FORMAT', __('License expiry date is invalid.', 'wp-license-manager'));
+            }
+            if ($expiry_timestamp < time()) {
+                return $this->error_response('LICENSE_EXPIRED', __('License has expired.', 'wp-license-manager'));
+            }
         }
         
         // Check product association
-        $license_product_id = get_post_meta($license_post->ID, '_wplm_product_id', true);
-        if ($product_id && $license_product_id !== $product_id) {
+        $request_product_id = !empty($product_id) ? absint($product_id) : null;
+        $license_product_id = absint(get_post_meta($license_post->ID, '_wplm_product_id', true));
+
+        if (!empty($request_product_id) && $license_product_id !== $request_product_id) {
             $this->log_failed_attempt($license_key, 'product_mismatch', $domain);
-            return $this->error_response('PRODUCT_MISMATCH', 'License not valid for this product.');
+            return $this->error_response('PRODUCT_MISMATCH', __('License not valid for this product.', 'wp-license-manager'));
         }
         
         // Check domain activation
         $activated_domains = get_post_meta($license_post->ID, '_wplm_activated_domains', true) ?: [];
-        $activation_limit = get_post_meta($license_post->ID, '_wplm_activation_limit', true) ?: 1;
+        $activation_limit = absint(get_post_meta($license_post->ID, '_wplm_activation_limit', true) ?: 1);
         
         if (!in_array($domain, $activated_domains)) {
-            return $this->error_response('DOMAIN_NOT_ACTIVATED', 'Domain not activated for this license.');
+            return $this->error_response('DOMAIN_NOT_ACTIVATED', __('Domain not activated for this license.', 'wp-license-manager'));
         }
         
         // Validate fingerprint if provided
         if (!empty($fingerprint)) {
             $stored_fingerprints = get_post_meta($license_post->ID, '_wplm_fingerprints', true) ?: [];
-            if (!empty($stored_fingerprints[$domain]) && $stored_fingerprints[$domain] !== $fingerprint) {
+            if (!empty($stored_fingerprints[$domain]) && !hash_equals($stored_fingerprints[$domain], $fingerprint)) {
                 $this->log_security_incident($license_key, 'fingerprint_mismatch', $domain, $fingerprint);
-                return $this->error_response('FINGERPRINT_MISMATCH', 'Site fingerprint has changed.');
+                return $this->error_response('FINGERPRINT_MISMATCH', __('Site fingerprint has changed. Re-activate the license if this is a legitimate change.', 'wp-license-manager'));
             }
         }
         
@@ -297,13 +363,13 @@ class WPLM_Enhanced_API_Manager {
         // Prepare response data
         $response_data = [
             'valid' => true,
-            'license_key' => $license_key,
-            'product_id' => $license_product_id,
-            'customer_email' => get_post_meta($license_post->ID, '_wplm_customer_email', true),
-            'expiry_date' => $expiry_date,
-            'activation_limit' => $activation_limit,
-            'activated_domains' => $activated_domains,
-            'license_type' => get_post_meta($license_post->ID, '_wplm_license_type', true),
+            'license_key' => esc_html($license_key),
+            'product_id' => absint($license_product_id),
+            'customer_email' => esc_html(get_post_meta($license_post->ID, '_wplm_customer_email', true)),
+            'expiry_date' => esc_html($expiry_date),
+            'activation_limit' => absint($activation_limit),
+            'activated_domains' => array_map('esc_url_raw', $activated_domains),
+            'license_type' => esc_html(get_post_meta($license_post->ID, '_wplm_license_type', true)),
             'features' => $this->get_license_features($license_post->ID),
             'server_time' => current_time('mysql'),
             'api_version' => '2.0',
@@ -314,9 +380,9 @@ class WPLM_Enhanced_API_Manager {
         if ($license_product_id) {
             $product_post = get_post($license_product_id);
             if ($product_post) {
-                $response_data['product_name'] = $product_post->post_title;
-                $response_data['product_version'] = get_post_meta($license_product_id, '_wplm_version', true);
-                $response_data['download_url'] = get_post_meta($license_product_id, '_wplm_download_url', true);
+                $response_data['product_name'] = esc_html($product_post->post_title);
+                $response_data['product_version'] = esc_html(get_post_meta($license_product_id, '_wplm_version', true));
+                $response_data['download_url'] = esc_url(get_post_meta($license_product_id, '_wplm_download_url', true));
             }
         }
         
@@ -333,37 +399,39 @@ class WPLM_Enhanced_API_Manager {
         
         // Find license
         $license_post = get_page_by_title($license_key, OBJECT, 'wplm_license');
-        if (!$license_post) {
-            return $this->error_response('INVALID_LICENSE', 'License key not found.');
+        if (!$license_post || is_wp_error($license_post)) {
+            $this->log_failed_attempt($license_key, 'invalid_license_activation', $domain);
+            return $this->error_response('INVALID_LICENSE', __('License key not found or is invalid.', 'wp-license-manager'));
         }
         
         // Check license status
         $status = get_post_meta($license_post->ID, '_wplm_status', true);
-        if ($status !== 'active') {
-            return $this->error_response('LICENSE_INACTIVE', 'License is not active.');
+        $allowed_statuses = ['active']; // Only 'active' is considered valid for activation attempts
+        if (!in_array($status, $allowed_statuses, true)) {
+            return $this->error_response('LICENSE_INACTIVE', __('License is not active or has an invalid status.', 'wp-license-manager'));
         }
         
         // Check activation limit
         $activated_domains = get_post_meta($license_post->ID, '_wplm_activated_domains', true) ?: [];
-        $activation_limit = get_post_meta($license_post->ID, '_wplm_activation_limit', true) ?: 1;
+        $activation_limit = absint(get_post_meta($license_post->ID, '_wplm_activation_limit', true) ?: 1);
         
         // If domain is already activated, return success
         if (in_array($domain, $activated_domains)) {
             return $this->success_response([
                 'activated' => true,
-                'message' => 'Domain is already activated.',
-                'activated_domains' => $activated_domains
+                'message' => __('Domain is already activated.', 'wp-license-manager'),
+                'activated_domains' => array_map('esc_url_raw', $activated_domains)
             ]);
         }
         
         // Check if we can activate more domains
         if (count($activated_domains) >= $activation_limit) {
-            return $this->error_response('ACTIVATION_LIMIT_EXCEEDED', 'Maximum number of activations reached.');
+            return $this->error_response('ACTIVATION_LIMIT_EXCEEDED', __('Maximum number of activations reached.', 'wp-license-manager'));
         }
         
         // Validate domain
         if (!$this->is_valid_domain($domain)) {
-            return $this->error_response('INVALID_DOMAIN', 'Invalid domain format.');
+            return $this->error_response('INVALID_DOMAIN', __('Invalid domain format.', 'wp-license-manager'));
         }
         
         // Generate fingerprint
@@ -371,38 +439,47 @@ class WPLM_Enhanced_API_Manager {
         
         // Add domain to activated list
         $activated_domains[] = $domain;
-        update_post_meta($license_post->ID, '_wplm_activated_domains', $activated_domains);
+        if (update_post_meta($license_post->ID, '_wplm_activated_domains', $activated_domains) === false) {
+            $this->log_error('Failed to update activated domains for license ' . $license_key);
+            return $this->error_response('DATABASE_ERROR', __('Failed to update activated domains.', 'wp-license-manager'), 500);
+        }
         
         // Store fingerprint
         $fingerprints = get_post_meta($license_post->ID, '_wplm_fingerprints', true) ?: [];
         $fingerprints[$domain] = $fingerprint;
-        update_post_meta($license_post->ID, '_wplm_fingerprints', $fingerprints);
+        if (update_post_meta($license_post->ID, '_wplm_fingerprints', $fingerprints) === false) {
+            $this->log_error('Failed to update fingerprints for license ' . $license_key);
+            return $this->error_response('DATABASE_ERROR', __('Failed to store fingerprint.', 'wp-license-manager'), 500);
+        }
         
         // Store site info
         $site_data = get_post_meta($license_post->ID, '_wplm_site_data', true) ?: [];
         $site_data[$domain] = array_merge($site_info, [
             'activated_at' => current_time('mysql'),
             'ip_address' => $this->get_client_ip(),
-            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? ''
+            'user_agent' => sanitize_text_field($_SERVER['HTTP_USER_AGENT'] ?? '')
         ]);
-        update_post_meta($license_post->ID, '_wplm_site_data', $site_data);
+        if (update_post_meta($license_post->ID, '_wplm_site_data', $site_data) === false) {
+            $this->log_error('Failed to update site data for license ' . $license_key);
+            return $this->error_response('DATABASE_ERROR', __('Failed to store site data.', 'wp-license-manager'), 500);
+        }
         
         // Log activation
         if (class_exists('WPLM_Activity_Logger')) {
             WPLM_Activity_Logger::log(
                 $license_post->ID,
                 'license_activated',
-                "License activated on domain: {$domain}",
+                sprintf(__('License activated on domain: %s', 'wp-license-manager'), $domain),
                 ['domain' => $domain, 'fingerprint' => $fingerprint]
             );
         }
         
         return $this->success_response([
             'activated' => true,
-            'message' => 'License activated successfully.',
-            'domain' => $domain,
-            'fingerprint' => $fingerprint,
-            'activated_domains' => $activated_domains,
+            'message' => __('License activated successfully.', 'wp-license-manager'),
+            'domain' => esc_url_raw($domain),
+            'fingerprint' => esc_html($fingerprint),
+            'activated_domains' => array_map('esc_url_raw', $activated_domains),
             'remaining_activations' => max(0, $activation_limit - count($activated_domains))
         ]);
     }
@@ -416,8 +493,14 @@ class WPLM_Enhanced_API_Manager {
         
         // Find license
         $license_post = get_page_by_title($license_key, OBJECT, 'wplm_license');
-        if (!$license_post) {
-            return $this->error_response('INVALID_LICENSE', 'License key not found.');
+        if (!$license_post || is_wp_error($license_post)) {
+            $this->log_failed_attempt($license_key, 'invalid_license_deactivation', $domain);
+            return $this->error_response('INVALID_LICENSE', __('License key not found or is invalid.', 'wp-license-manager'));
+        }
+        
+        // Validate domain
+        if (!$this->is_valid_domain($domain)) {
+            return $this->error_response('INVALID_DOMAIN', __('Invalid domain format.', 'wp-license-manager'));
         }
         
         // Get activated domains
@@ -425,42 +508,53 @@ class WPLM_Enhanced_API_Manager {
         
         // Check if domain is activated
         if (!in_array($domain, $activated_domains)) {
-            return $this->error_response('DOMAIN_NOT_ACTIVATED', 'Domain is not activated.');
+            return $this->error_response('DOMAIN_NOT_ACTIVATED', __('Domain is not activated for this license.', 'wp-license-manager'));
         }
         
         // Remove domain from activated list
         $activated_domains = array_filter($activated_domains, function($d) use ($domain) {
             return $d !== $domain;
         });
-        update_post_meta($license_post->ID, '_wplm_activated_domains', array_values($activated_domains));
+        
+        if (update_post_meta($license_post->ID, '_wplm_activated_domains', array_values($activated_domains)) === false) {
+            $this->log_error('Failed to update activated domains during deactivation for license ' . $license_key);
+            return $this->error_response('DATABASE_ERROR', __('Failed to remove domain from activated list.', 'wp-license-manager'), 500);
+        }
         
         // Remove fingerprint
         $fingerprints = get_post_meta($license_post->ID, '_wplm_fingerprints', true) ?: [];
         unset($fingerprints[$domain]);
-        update_post_meta($license_post->ID, '_wplm_fingerprints', $fingerprints);
+        if (update_post_meta($license_post->ID, '_wplm_fingerprints', $fingerprints) === false) {
+            $this->log_error('Failed to remove fingerprint during deactivation for license ' . $license_key);
+            return $this->error_response('DATABASE_ERROR', __('Failed to remove fingerprint.', 'wp-license-manager'), 500);
+        }
         
         // Update site data
         $site_data = get_post_meta($license_post->ID, '_wplm_site_data', true) ?: [];
         if (isset($site_data[$domain])) {
             $site_data[$domain]['deactivated_at'] = current_time('mysql');
         }
-        update_post_meta($license_post->ID, '_wplm_site_data', $site_data);
+        if (update_post_meta($license_post->ID, '_wplm_site_data', $site_data) === false) {
+            $this->log_error('Failed to update site data during deactivation for license ' . $license_key);
+            return $this->error_response('DATABASE_ERROR', __('Failed to update site data.', 'wp-license-manager'), 500);
+        }
         
         // Log deactivation
         if (class_exists('WPLM_Activity_Logger')) {
             WPLM_Activity_Logger::log(
                 $license_post->ID,
                 'license_deactivated',
-                "License deactivated from domain: {$domain}",
+                sprintf(__('License deactivated from domain: %s', 'wp-license-manager'), $domain),
                 ['domain' => $domain]
             );
         }
         
         return $this->success_response([
             'deactivated' => true,
-            'message' => 'License deactivated successfully.',
-            'domain' => $domain,
-            'activated_domains' => $activated_domains
+            'message' => __('License deactivated successfully.', 'wp-license-manager'),
+            'domain' => esc_url_raw($domain),
+            'activated_domains' => array_map('esc_url_raw', array_values($activated_domains)),
+            'remaining_activations' => max(0, absint(get_post_meta($license_post->ID, '_wplm_activation_limit', true) ?: 1) - count($activated_domains))
         ]);
     }
 
@@ -475,35 +569,45 @@ class WPLM_Enhanced_API_Manager {
         // Validate license first
         $validation = $this->quick_license_validation($license_key, $product_id);
         if (!$validation['valid']) {
-            return $this->error_response($validation['error'], $validation['message']);
+            return $this->error_response($validation['error'], __($validation['message'], 'wp-license-manager'));
         }
         
         // Get product information
-        $product_post = get_post($product_id);
-        if (!$product_post) {
-            return $this->error_response('PRODUCT_NOT_FOUND', 'Product not found.');
+        $product_post = get_post(absint($product_id));
+        if (!$product_post || is_wp_error($product_post) || get_post_type($product_post) !== 'wplm_product') {
+            return $this->error_response('PRODUCT_NOT_FOUND', __('Product not found or is invalid.', 'wp-license-manager'));
         }
         
         $latest_version = get_post_meta($product_id, '_wplm_version', true);
         $download_url = get_post_meta($product_id, '_wplm_download_url', true);
         $changelog = get_post_meta($product_id, '_wplm_changelog', true);
         
+        if (empty($latest_version)) {
+            return $this->error_response('NO_VERSION_INFO', __('No version information available for this product.', 'wp-license-manager'));
+        }
+
         $update_available = version_compare($latest_version, $current_version, '>');
         
         $response_data = [
             'update_available' => $update_available,
-            'current_version' => $current_version,
-            'latest_version' => $latest_version,
-            'product_name' => $product_post->post_title,
-            'tested_wp_version' => get_post_meta($product_id, '_wplm_tested_wp_version', true),
-            'requires_wp_version' => get_post_meta($product_id, '_wplm_requires_wp_version', true),
-            'requires_php_version' => get_post_meta($product_id, '_wplm_requires_php_version', true)
+            'current_version' => esc_html($current_version),
+            'latest_version' => esc_html($latest_version),
+            'product_name' => esc_html($product_post->post_title),
+            'tested_wp_version' => esc_html(get_post_meta($product_id, '_wplm_tested_wp_version', true)),
+            'requires_wp_version' => esc_html(get_post_meta($product_id, '_wplm_requires_wp_version', true)),
+            'requires_php_version' => esc_html(get_post_meta($product_id, '_wplm_requires_php_version', true))
         ];
         
         if ($update_available) {
-            $response_data['download_url'] = $download_url;
-            $response_data['changelog'] = $changelog;
-            $response_data['update_message'] = "Update available: version {$latest_version}";
+            if (empty($download_url)) {
+                $this->log_error('Download URL missing for product ' . $product_id);
+                // Still return update available, but without download URL
+                $response_data['update_message'] = __('Update available, but download URL is missing.', 'wp-license-manager');
+            } else {
+                $response_data['download_url'] = esc_url($download_url);
+                $response_data['update_message'] = sprintf(__('Update available: version %s', 'wp-license-manager'), esc_html($latest_version));
+            }
+            $response_data['changelog'] = wp_kses_post($changelog);
         }
         
         return $this->success_response($response_data);
@@ -520,38 +624,43 @@ class WPLM_Enhanced_API_Manager {
         // Validate license
         $validation = $this->quick_license_validation($license_key, $product_id);
         if (!$validation['valid']) {
-            return $this->error_response($validation['error'], $validation['message']);
+            return $this->error_response($validation['error'], __($validation['message'], 'wp-license-manager'));
         }
         
         // Validate download token if provided
-        if ($download_token && !$this->validate_download_token($download_token, $license_key, $product_id)) {
-            return $this->error_response('INVALID_TOKEN', 'Invalid download token.');
+        if (!empty($download_token) && !$this->validate_download_token($download_token, $license_key, $product_id)) {
+            return $this->error_response('INVALID_TOKEN', __('Invalid download token.', 'wp-license-manager'));
         }
         
         // Get download URL
-        $download_url = get_post_meta($product_id, '_wplm_download_url', true);
+        $download_url = get_post_meta(absint($product_id), '_wplm_download_url', true);
         if (empty($download_url)) {
-            return $this->error_response('NO_DOWNLOAD_AVAILABLE', 'No download available for this product.');
+            $this->log_error('Download URL missing for product: ' . $product_id);
+            return $this->error_response('NO_DOWNLOAD_AVAILABLE', __('No download available for this product.', 'wp-license-manager'));
         }
         
         // Generate secure download link
         $secure_url = $this->generate_secure_download_link($license_key, $product_id, $download_url);
+        if (empty($secure_url)) {
+            $this->log_error('Failed to generate secure download link for license ' . $license_key . ' and product ' . $product_id);
+            return $this->error_response('DOWNLOAD_ERROR', __('Failed to generate secure download link.', 'wp-license-manager'), 500);
+        }
         
         // Log download
         if (class_exists('WPLM_Activity_Logger')) {
             WPLM_Activity_Logger::log(
-                $product_id,
+                absint($product_id),
                 'product_downloaded',
-                "Product downloaded with license: {$license_key}",
-                ['license_key' => $license_key, 'ip' => $this->get_client_ip()]
+                sprintf(__('Product downloaded with license: %s', 'wp-license-manager'), esc_html($license_key)),
+                ['license_key' => esc_html($license_key), 'ip' => $this->get_client_ip()]
             );
         }
         
         return $this->success_response([
-            'download_url' => $secure_url,
+            'download_url' => esc_url($secure_url),
             'expires_in' => 3600, // 1 hour
-            'product_name' => get_the_title($product_id),
-            'version' => get_post_meta($product_id, '_wplm_version', true)
+            'product_name' => esc_html(get_the_title(absint($product_id))),
+            'version' => esc_html(get_post_meta(absint($product_id), '_wplm_version', true))
         ]);
     }
 
@@ -563,20 +672,21 @@ class WPLM_Enhanced_API_Manager {
         
         // Find license
         $license_post = get_page_by_title($license_key, OBJECT, 'wplm_license');
-        if (!$license_post) {
-            return $this->error_response('INVALID_LICENSE', 'License key not found.');
+        if (!$license_post || is_wp_error($license_post)) {
+            $this->log_failed_attempt($license_key, 'invalid_license_info', ''); // Domain is not always relevant here
+            return $this->error_response('INVALID_LICENSE', __('License key not found or is invalid.', 'wp-license-manager'));
         }
         
         $response_data = [
-            'license_key' => $license_key,
-            'status' => get_post_meta($license_post->ID, '_wplm_status', true),
-            'customer_email' => get_post_meta($license_post->ID, '_wplm_customer_email', true),
-            'product_id' => get_post_meta($license_post->ID, '_wplm_product_id', true),
-            'activation_limit' => get_post_meta($license_post->ID, '_wplm_activation_limit', true),
-            'activated_domains' => get_post_meta($license_post->ID, '_wplm_activated_domains', true) ?: [],
-            'created_date' => $license_post->post_date,
-            'expiry_date' => get_post_meta($license_post->ID, '_wplm_expiry_date', true),
-            'license_type' => get_post_meta($license_post->ID, '_wplm_license_type', true),
+            'license_key' => esc_html($license_key),
+            'status' => esc_html(get_post_meta($license_post->ID, '_wplm_status', true)),
+            'customer_email' => esc_html(get_post_meta($license_post->ID, '_wplm_customer_email', true)),
+            'product_id' => absint(get_post_meta($license_post->ID, '_wplm_product_id', true)),
+            'activation_limit' => absint(get_post_meta($license_post->ID, '_wplm_activation_limit', true)),
+            'activated_domains' => array_map('esc_url_raw', get_post_meta($license_post->ID, '_wplm_activated_domains', true) ?: []),
+            'created_date' => esc_html($license_post->post_date),
+            'expiry_date' => esc_html(get_post_meta($license_post->ID, '_wplm_expiry_date', true)),
+            'license_type' => esc_html(get_post_meta($license_post->ID, '_wplm_license_type', true)),
             'features' => $this->get_license_features($license_post->ID)
         ];
         
@@ -584,9 +694,12 @@ class WPLM_Enhanced_API_Manager {
         $product_id = $response_data['product_id'];
         if ($product_id) {
             $product_post = get_post($product_id);
-            if ($product_post) {
-                $response_data['product_name'] = $product_post->post_title;
-                $response_data['product_version'] = get_post_meta($product_id, '_wplm_version', true);
+            if (!$product_post || is_wp_error($product_post) || get_post_type($product_post) !== 'wplm_product') {
+                $this->log_error('Product not found or invalid for license ' . $license_key . ': ' . $product_id);
+                // Optionally, return an error here, or continue with partial data
+            } else {
+                $response_data['product_name'] = esc_html($product_post->post_title);
+                $response_data['product_version'] = esc_html(get_post_meta($product_id, '_wplm_version', true));
             }
         }
         
@@ -602,21 +715,40 @@ class WPLM_Enhanced_API_Manager {
         $stats = $request->get_param('stats') ?: [];
         
         // Quick validation
-        $validation = $this->quick_license_validation($license_key);
+        $validation = $this->quick_license_validation($license_key, null, $domain);
         if (!$validation['valid']) {
-            return $this->error_response($validation['error'], $validation['message']);
+            return $this->error_response($validation['error'], __($validation['message'], 'wp-license-manager'));
         }
         
+        // Validate domain format again, as quick_license_validation primarily checks activation status
+        if (!$this->is_valid_domain($domain)) {
+            return $this->error_response('INVALID_DOMAIN', __('Invalid domain format.', 'wp-license-manager'));
+        }
+
         // Update heartbeat data
         $license_post = get_page_by_title($license_key, OBJECT, 'wplm_license');
+        if (!$license_post || is_wp_error($license_post)) {
+            $this->log_error('Heartbeat failed: License post not found or invalid for key ' . $license_key);
+            return $this->error_response('INVALID_LICENSE', __('License not found or is invalid.', 'wp-license-manager'));
+        }
+
         $heartbeat_data = get_post_meta($license_post->ID, '_wplm_heartbeat_data', true) ?: [];
         
-        $heartbeat_data[$domain] = array_merge($stats, [
+        // Sanitize incoming stats data
+        $sanitized_stats = [];
+        foreach ($stats as $key => $value) {
+            $sanitized_stats[sanitize_key($key)] = sanitize_text_field($value);
+        }
+
+        $heartbeat_data[$domain] = array_merge($sanitized_stats, [
             'last_heartbeat' => current_time('mysql'),
             'ip_address' => $this->get_client_ip()
         ]);
         
-        update_post_meta($license_post->ID, '_wplm_heartbeat_data', $heartbeat_data);
+        if (update_post_meta($license_post->ID, '_wplm_heartbeat_data', $heartbeat_data) === false) {
+            $this->log_error('Failed to update heartbeat data for license ' . $license_key . ' on domain ' . $domain);
+            return $this->error_response('DATABASE_ERROR', __('Failed to record heartbeat data.', 'wp-license-manager'), 500);
+        }
         
         return $this->success_response([
             'heartbeat_received' => true,
@@ -629,7 +761,16 @@ class WPLM_Enhanced_API_Manager {
      * Authentication and security methods
      */
     public function authenticate_api_request(WP_REST_Request $request) {
-        // For now, allow all requests - implement API key authentication here
+        $api_key = $request->get_header('x-wplm-api-key');
+        $stored_api_key = get_option('wplm_api_key');
+
+        if (empty($api_key) || !hash_equals($api_key, $stored_api_key)) {
+            return new WP_Error(
+                'wplm_api_unauthorized',
+                __('Unauthorized API Key.', 'wp-license-manager'),
+                ['status' => rest_authorization_required_code()]
+            );
+        }
         return true;
     }
 
@@ -674,26 +815,39 @@ class WPLM_Enhanced_API_Manager {
     /**
      * Helper methods
      */
-    private function quick_license_validation($license_key, $product_id = null) {
+    private function quick_license_validation($license_key, $product_id = null, $domain = null) {
         $license_post = get_page_by_title($license_key, OBJECT, 'wplm_license');
-        if (!$license_post) {
-            return ['valid' => false, 'error' => 'INVALID_LICENSE', 'message' => 'License not found'];
+        if (!$license_post || is_wp_error($license_post)) {
+            return ['valid' => false, 'error' => 'INVALID_LICENSE', 'message' => __('License not found or is invalid.', 'wp-license-manager')];
         }
         
         $status = get_post_meta($license_post->ID, '_wplm_status', true);
         if ($status !== 'active') {
-            return ['valid' => false, 'error' => 'LICENSE_INACTIVE', 'message' => 'License inactive'];
+            return ['valid' => false, 'error' => 'LICENSE_INACTIVE', 'message' => __('License inactive or has an invalid status.', 'wp-license-manager')];
         }
         
         $expiry_date = get_post_meta($license_post->ID, '_wplm_expiry_date', true);
-        if (!empty($expiry_date) && strtotime($expiry_date) < time()) {
-            return ['valid' => false, 'error' => 'LICENSE_EXPIRED', 'message' => 'License expired'];
+        if (!empty($expiry_date)) {
+            $expiry_timestamp = strtotime($expiry_date);
+            if ($expiry_timestamp === false) {
+                // Log error, but don't fail validation completely if only used for quick check
+                error_log('WPLM Error: Invalid expiry date format in quick_license_validation for license ' . $license_key . ': ' . $expiry_date);
+            } elseif ($expiry_timestamp < time()) {
+                return ['valid' => false, 'error' => 'LICENSE_EXPIRED', 'message' => __('License expired.', 'wp-license-manager')];
+            }
         }
         
         if ($product_id) {
-            $license_product_id = get_post_meta($license_post->ID, '_wplm_product_id', true);
-            if ($license_product_id !== $product_id) {
-                return ['valid' => false, 'error' => 'PRODUCT_MISMATCH', 'message' => 'Product mismatch'];
+            $request_product_id = absint($product_id);
+            $license_product_id = absint(get_post_meta($license_post->ID, '_wplm_product_id', true));
+            if ($license_product_id !== $request_product_id) {
+                return ['valid' => false, 'error' => 'PRODUCT_MISMATCH', 'message' => __('Product mismatch.', 'wp-license-manager')];
+            }
+        }
+
+        if ($domain) {
+            if (!$this->is_valid_domain($domain)) {
+                return ['valid' => false, 'error' => 'INVALID_DOMAIN', 'message' => __('Invalid domain format.', 'wp-license-manager')];
             }
         }
         
@@ -752,8 +906,22 @@ class WPLM_Enhanced_API_Manager {
     }
 
     private function get_license_features($license_id) {
-        // Get features based on license type or return default
-        return ['updates', 'support'];
+        $license_type = get_post_meta($license_id, '_wplm_license_type', true);
+        $features = [];
+
+        switch ($license_type) {
+            case 'pro':
+                $features = ['updates', 'priority_support', 'advanced_features'];
+                break;
+            case 'developer':
+                $features = ['updates', 'priority_support', 'advanced_features', 'developer_tools'];
+                break;
+            default: // Standard or unrecognized license type
+                $features = ['updates', 'support'];
+                break;
+        }
+
+        return array_map('sanitize_text_field', $features);
     }
 
     private function update_license_usage($license_id, $domain) {
@@ -777,17 +945,47 @@ class WPLM_Enhanced_API_Manager {
     }
 
     private function validate_download_token($token, $license_key, $product_id) {
-        // Implement download token validation
-        return true; // Placeholder
+        $request_expires = isset($_GET['expires']) ? absint($_GET['expires']) : 0;
+        $request_license_key = isset($_GET['license_key']) ? sanitize_text_field($_GET['license_key']) : '';
+        $request_product_id = isset($_GET['product_id']) ? absint($_GET['product_id']) : 0;
+        
+        // Check if token has expired
+        if (empty($request_expires) || time() > $request_expires) {
+            error_log('WPLM Error: Download token expired or missing expiry.');
+            return false;
+        }
+        
+        // Ensure license key and product ID match
+        if (empty($request_license_key) || empty($request_product_id) || $request_license_key !== $license_key || $request_product_id !== absint($product_id)) {
+            error_log('WPLM Error: Download token mismatch (license key or product ID).');
+            return false;
+        }
+        
+        // Re-generate the expected token to compare securely
+        $salt = wp_salt('wplm_download_token');
+        $expected_token_data = $license_key . '|' . $product_id . '|' . $request_expires . '|' . $salt;
+        $expected_token = hash('sha256', $expected_token_data);
+        
+        if (!hash_equals($token, $expected_token)) {
+            error_log('WPLM Error: Download token hash mismatch.');
+            return false;
+        }
+        
+        return true;
     }
 
     private function generate_secure_download_link($license_key, $product_id, $download_url) {
-        // Generate a secure, time-limited download link
-        $token = hash('sha256', $license_key . $product_id . time() . $this->encryption_key);
+        $expires = time() + (int) apply_filters('wplm_secure_download_link_expiry', 3600); // Default 1 hour
+        $salt = wp_salt('wplm_download_token');
+        $token_data = $license_key . '|' . $product_id . '|' . $expires . '|' . $salt;
+        $token = hash('sha256', $token_data);
+        
         return add_query_arg([
             'wplm_download' => '1',
+            'license_key' => $license_key,
+            'product_id' => $product_id,
             'token' => $token,
-            'expires' => time() + 3600
+            'expires' => $expires
         ], $download_url);
     }
 

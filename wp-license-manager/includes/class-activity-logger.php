@@ -21,12 +21,26 @@ class WPLM_Activity_Logger {
      * @return bool True on success, false on failure.
      */
     public static function log(int $object_id, string $event_type, string $description, array $data = []): bool {
+        // Validate $object_id
+        $sanitized_object_id = absint($object_id);
+        if (0 === $sanitized_object_id && $object_id !== 0) { // Allow 0 for non-object specific logs
+            error_log(sprintf(esc_html__('WPLM_Activity_Logger: Invalid object ID provided: %s.', 'wplm'), $object_id));
+            return false;
+        }
+
+        // Sanitize other simple inputs
+        $sanitized_event_type = sanitize_key($event_type);
+        $sanitized_description = sanitize_text_field($description);
+
+        // Sanitize data array recursively
+        $sanitized_data = self::sanitize_recursive_data($data);
+
         if (!function_exists('get_current_user_id')) { // Ensure WordPress functions are loaded
             require_once(ABSPATH . 'wp-includes/pluggable.php');
         }
 
         $user_id = get_current_user_id();
-        $activity_log = get_post_meta($object_id, '_wplm_activity_log', true);
+        $activity_log = get_post_meta($sanitized_object_id, '_wplm_activity_log', true);
 
         if (!is_array($activity_log)) {
             $activity_log = [];
@@ -35,9 +49,9 @@ class WPLM_Activity_Logger {
         $log_entry = [
             'timestamp'   => current_time('mysql', true), // UTC time
             'user_id'     => $user_id,
-            'event_type'  => sanitize_key($event_type),
-            'description' => sanitize_text_field($description),
-            'data'        => $data,
+            'event_type'  => $sanitized_event_type,
+            'description' => $sanitized_description,
+            'data'        => $sanitized_data,
             'ip_address'  => sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? ''),
             'user_agent'  => sanitize_text_field($_SERVER['HTTP_USER_AGENT'] ?? ''),
         ];
@@ -47,24 +61,30 @@ class WPLM_Activity_Logger {
         // Limit the log to a reasonable number of entries (e.g., last 50)
         $activity_log = array_slice($activity_log, -50);
 
-        $updated = (bool) update_post_meta($object_id, '_wplm_activity_log', $activity_log);
-
-        // Also log to a global activity stream (for the main activity log page)
-        $global_activity_log = get_option('wplm_global_activity_log', []);
-        if (!is_array($global_activity_log)) {
-            $global_activity_log = [];
+        if (false === update_post_meta($sanitized_object_id, '_wplm_activity_log', $activity_log)) {
+            error_log(sprintf(esc_html__('WPLM_Activity_Logger: Failed to save activity log for object ID %d.', 'wplm'), $sanitized_object_id));
+            return false;
         }
-        
-        // Add object_id and object_type to the global log entry for context
-        $log_entry['object_id'] = $object_id;
-        $log_entry['object_type'] = get_post_type($object_id);
-        
-        $global_activity_log[] = $log_entry;
-        $global_activity_log = array_slice($global_activity_log, -100); // Keep last 100 global entries
-        
-        update_option('wplm_global_activity_log', $global_activity_log);
+        return true; // Indicate success
+    }
 
-        return $updated;
+    /**
+     * Recursively sanitizes data array for logging.
+     *
+     * @param array $data The data array to sanitize.
+     * @return array The sanitized data array.
+     */
+    private static function sanitize_recursive_data(array $data): array {
+        $sanitized_data = [];
+        foreach ($data as $key => $value) {
+            $sanitized_key = sanitize_key($key);
+            if (is_array($value)) {
+                $sanitized_data[$sanitized_key] = self::sanitize_recursive_data($value);
+            } else {
+                $sanitized_data[$sanitized_key] = sanitize_text_field($value);
+            }
+        }
+        return $sanitized_data;
     }
 
     /**
@@ -74,17 +94,9 @@ class WPLM_Activity_Logger {
      * @return array The activity log array, or an empty array if none exists.
      */
     public static function get_log(int $object_id): array {
-        $log = get_post_meta($object_id, '_wplm_activity_log', true);
-        return is_array($log) ? $log : [];
-    }
+        $sanitized_object_id = absint($object_id);
 
-    /**
-     * Retrieves the global activity log.
-     *
-     * @return array The global activity log array, or an empty array if none exists.
-     */
-    public static function get_global_log(): array {
-        $log = get_option('wplm_global_activity_log', []);
-        return is_array($log) ? array_reverse($log) : []; // Return in reverse chronological order
+        $log = get_post_meta($sanitized_object_id, '_wplm_activity_log', true);
+        return is_array($log) ? self::sanitize_recursive_data($log) : [];
     }
 }

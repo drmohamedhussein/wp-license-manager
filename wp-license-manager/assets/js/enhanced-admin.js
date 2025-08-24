@@ -16,6 +16,7 @@
             this.initModals();
             this.initTooltips();
             this.detectRTL();
+            this.initSelect2(); // Initialize Select2 for all dropdowns
         },
 
         /**
@@ -53,7 +54,8 @@
             $(document).on('click', '#clear-old-logs', this.clearOldLogs);
             $(document).on('click', '#clear-all-logs', this.clearAllLogs);
             $(document).on('click', '#sync-wc-products', this.syncWooCommerceProducts);
-            $(document).on('click', '#wplm-add-new-customer', this.openCreateCustomerModal); // Add customer button
+            $(document).on('click', '#scan-orders', this.scanWooCommerceOrders);
+            $(document).on('click', '#generate-licenses-button', this.generateWooCommerceLicenses);
             
             // Status toggles
             $(document).on('change', '.wplm-status-toggle', this.toggleStatus);
@@ -552,7 +554,7 @@
                 success: function(response) {
                     if (response.success) {
                         $('#customer-modal-body').html(response.data.html);
-                        $('#customer-modal').addClass('wplm-modal-show');
+                        $('#customer-modal').show();
                     } else {
                         WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
                     }
@@ -567,10 +569,7 @@
          * Close modal
          */
         closeModal: function() {
-            $('.wplm-modal').removeClass('wplm-modal-show');
-            // Remove dynamically added modal content on close if it exists
-            $('#create-subscription-modal').remove();
-            $('#wplm-add-customer-modal').remove(); // Also remove customer modal
+            $('.wplm-modal').hide();
         },
 
         /**
@@ -819,11 +818,127 @@
         },
 
         /**
+         * Initialize Select2 for AJAX dropdowns
+         */
+        initSelect2: function() {
+            if ($.fn.select2) {
+                $('#wplm_subscription_customer_id').select2({
+                    placeholder: wplm_admin.strings.select_customer,
+                    allowClear: true,
+                    ajax: {
+                        url: wplm_admin.ajax_url,
+                        dataType: 'json',
+                        delay: 250,
+                        data: function (params) {
+                            return {
+                                action: 'wplm_search_customers',
+                                nonce: wplm_admin.nonce,
+                                search: params.term, // search term
+                                page: params.page
+                            };
+                        },
+                        processResults: function (data, params) {
+                            params.page = params.page || 1;
+                            return {
+                                results: data.data.customers,
+                                pagination: {
+                                    more: (params.page * 30) < data.data.total_count
+                                }
+                            };
+                        },
+                        cache: true
+                    },
+                    minimumInputLength: 2,
+                    templateResult: function(customer) {
+                        if (customer.loading) return customer.text;
+                        return `<div>${customer.text} (${customer.email})</div>`;
+                    },
+                    templateSelection: function(customer) {
+                        return customer.text || customer.id;
+                    }
+                });
+        
+                $('#wplm_subscription_product_id').select2({
+                    placeholder: wplm_admin.strings.select_product,
+                    allowClear: true,
+                    ajax: {
+                        url: wplm_admin.ajax_url,
+                        dataType: 'json',
+                        delay: 250,
+                        data: function (params) {
+                            return {
+                                action: 'wplm_search_products',
+                                nonce: wplm_admin.nonce,
+                                search: params.term, // search term
+                                page: params.page
+                            };
+                        },
+                        processResults: function (data, params) {
+                            params.page = params.page || 1;
+                            return {
+                                results: data.data.products,
+                                pagination: {
+                                    more: (params.page * 30) < data.data.total_count
+                                }
+                            };
+                        },
+                        cache: true
+                    },
+                    minimumInputLength: 2,
+                    templateResult: function(product) {
+                        if (product.loading) return product.text;
+                        return `<div>${product.text} (ID: ${product.id})</div>`;
+                    },
+                    templateSelection: function(product) {
+                        return product.text || product.id;
+                    }
+                });
+        
+                // Initialize Select2 for product search fields in Add/Bulk License Modals
+                $('.wplm-select2-product-search').select2({
+                    placeholder: wplm_admin.strings.select_product,
+                    allowClear: true,
+                    ajax: {
+                        url: wplm_admin.ajax_url,
+                        dataType: 'json',
+                        delay: 250,
+                        data: function (params) {
+                            return {
+                                action: 'wplm_search_products',
+                                nonce: wplm_admin.nonce,
+                                search: params.term, // search term
+                                page: params.page
+                            };
+                        },
+                        processResults: function (data, params) {
+                            params.page = params.page || 1;
+                            return {
+                                results: data.data.products,
+                                pagination: {
+                                    more: (params.page * 30) < data.data.total_count
+                                }
+                            };
+                        },
+                        cache: true
+                    },
+                    minimumInputLength: 2,
+                    templateResult: function(product) {
+                        if (product.loading) return product.text;
+                        return `<div>${product.text} (ID: ${product.id})</div>`;
+                    },
+                    templateSelection: function(product) {
+                        return product.text || product.id;
+                    }
+                });
+            }
+        },
+
+        /**
          * Open create subscription modal
          */
         openCreateSubscriptionModal: function() {
             const modalHtml = `
-                <div id="create-subscription-modal" class="wplm-modal">
+                <div id="create-subscription-modal" class="wplm-modal" style="display: block;">
                     <div class="wplm-modal-content">
                         <div class="wplm-modal-header">
                             <h3>${wplm_admin.strings.create_subscription}</h3>
@@ -881,7 +996,6 @@
             `;
 
             $('body').append(modalHtml);
-            $('#create-subscription-modal').addClass('wplm-modal-show'); // Add class to show modal
 
             // Handle form submission
             $('#create-subscription-form').on('submit', function(e) {
@@ -908,13 +1022,7 @@
                         if (response.success) {
                             WPLM_Enhanced_Admin.showNotification(response.data.message, 'success');
                             WPLM_Enhanced_Admin.closeModal();
-                            // Redirect to the edit page of the newly created subscription
-                            if (response.data.subscription_id) {
-                                window.location.href = wplm_admin.admin_url + 'post.php?post=' + response.data.subscription_id + '&action=edit';
-                            } else {
-                                // Fallback to reloading the data table if no subscription_id is returned
-                                $('#subscriptions-table').DataTable().ajax.reload();
-                            }
+                            $('#subscriptions-table').DataTable().ajax.reload();
                         } else {
                             WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
                         }
@@ -930,250 +1038,153 @@
         },
 
         /**
-         * Open create customer modal
+         * Close create subscription modal
          */
-        openCreateCustomerModal: function() {
-            const modalHtml = `
-                <div id="wplm-add-customer-modal" class="wplm-modal">
-                    <div class="wplm-modal-content">
-                        <div class="wplm-modal-header">
-                            <h3>${wplm_admin.strings.add_new_customer || 'Add New Customer'}</h3>
-                            <span class="wplm-modal-close">&times;</span>
-                        </div>
-                        <div class="wplm-modal-body">
-                            <form id="wplm-create-customer-form">
-                                ${wplm_admin.add_customer_nonce_field}
-                                <table class="form-table">
-                                    <tr>
-                                        <th><label for="ac_user_id">${wplm_admin.strings.link_wordpress_user || 'Link to WordPress User'}</label></th>
-                                        <td>
-                                            <select id="ac_user_id" name="user_id" class="wplm-ajax-search-users" style="width: 100%;" data-placeholder="${wplm_admin.strings.search_wordpress_user || 'Search for a WordPress user'}">
-                                                <option value=""></option>
-                                            </select>
-                                            <p class="description">${wplm_admin.strings.link_wordpress_user_desc || 'Optionally link this customer to an existing WordPress user.'}</p>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <th><label for="ac_first_name">${wplm_admin.strings.first_name || 'First Name'}</label></th>
-                                        <td><input type="text" id="ac_first_name" name="first_name" class="regular-text" required /></td>
-                                    </tr>
-                                    <tr>
-                                        <th><label for="ac_last_name">${wplm_admin.strings.last_name || 'Last Name'}</label></th>
-                                        <td><input type="text" id="ac_last_name" name="last_name" class="regular-text" required /></td>
-                                    </tr>
-                                    <tr>
-                                        <th><label for="ac_email">${wplm_admin.strings.email || 'Email'}</label></th>
-                                        <td><input type="email" id="ac_email" name="email" class="regular-text" required /></td>
-                                    </tr>
-                                    <tr>
-                                        <th><label for="ac_company">${wplm_admin.strings.company || 'Company'}</label></th>
-                                        <td><input type="text" id="ac_company" name="company" class="regular-text" /></td>
-                                    </tr>
-                                    <tr>
-                                        <th><label for="ac_phone">${wplm_admin.strings.phone || 'Phone'}</label></th>
-                                        <td><input type="text" id="ac_phone" name="phone" class="regular-text" /></td>
-                                    </tr>
-                                    <tr>
-                                        <th><label for="ac_address">${wplm_admin.strings.address || 'Address'}</label></th>
-                                        <td><input type="text" id="ac_address" name="address" class="regular-text" /></td>
-                                    </tr>
-                                    <tr>
-                                        <th><label for="ac_city">${wplm_admin.strings.city || 'City'}</label></th>
-                                        <td><input type="text" id="ac_city" name="city" class="regular-text" /></td>
-                                    </tr>
-                                    <tr>
-                                        <th><label for="ac_state">${wplm_admin.strings.state || 'State/Province'}</label></th>
-                                        <td><input type="text" id="ac_state" name="state" class="regular-text" /></td>
-                                    </tr>
-                                    <tr>
-                                        <th><label for="ac_zip">${wplm_admin.strings.zip_postal_code || 'Zip/Postal Code'}</label></th>
-                                        <td><input type="text" id="ac_zip" name="zip" class="regular-text" /></td>
-                                    </tr>
-                                    <tr>
-                                        <th><label for="ac_country">${wplm_admin.strings.country || 'Country'}</label></th>
-                                        <td><input type="text" id="ac_country" name="country" class="regular-text" /></td>
-                                    </tr>
-                                    <tr>
-                                        <th><label for="ac_social_media">${wplm_admin.strings.social_media_links || 'Social Media Links'}</label></th>
-                                        <td><textarea id="ac_social_media" name="social_media" class="large-text" rows="4"></textarea><p class="description">${wplm_admin.strings.social_media_desc || 'Enter one link per line.'}</p></td>
-                                    </tr>
-                                </table>
-                                <p class="submit">
-                                    <button type="submit" class="button button-primary" id="submit-add-customer">${wplm_admin.strings.add_customer || 'Add Customer'}</button>
-                                    <button type="button" class="button wplm-modal-cancel">${wplm_admin.strings.cancel || 'Cancel'}</button>
-                                </p>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            `;
-            $('body').append(modalHtml);
-            $('#wplm-add-customer-modal').addClass('wplm-modal-show'); // Show the modal
+        closeCreateSubscriptionModal: function() {
+            $('#create-subscription-modal').hide();
+        },
 
-            // Initialize Select2 for user search within the modal
-            $('#ac_user_id').select2({
-                ajax: {
-                    url: wplm_admin.ajax_url,
-                    dataType: 'json',
-                    delay: 250,
-                    data: function (params) {
-                        return {
-                            action: 'wplm_search_users',
-                            nonce: wplm_admin.search_users_nonce, // Define this nonce in PHP
-                            q: params.term
-                        };
-                    },
-                    processResults: function (data) {
-                        return {
-                            results: data.results
-                        };
-                    },
-                    cache: true
-                },
-                placeholder: wplm_admin.strings.search_wordpress_user || 'Search for a WordPress user',
-                minimumInputLength: 2
-            });
+        /**
+         * Create new subscription
+         */
+        createSubscription: function() {
+            const $form = $('#create-subscription-form');
+            const $button = $('#create-subscription-button');
+            const originalText = $button.text();
+            
+            $button.prop('disabled', true).text(wplm_admin.strings.loading);
 
-            // Handle form submission
-            $('#wplm-create-customer-form').on('submit', function(e) {
-                e.preventDefault();
-                const $form = $(this);
-                const $submitButton = $('#submit-add-customer');
-                $submitButton.prop('disabled', true).text(wplm_admin.strings.loading || 'Adding Customer...');
-
-                $.ajax({
-                    url: wplm_admin.ajax_url,
-                    type: 'POST',
-                    data: {
-                        action: 'wplm_create_customer_profile',
-                        nonce: wplm_admin.add_customer_nonce, // New nonce for customer creation
-                        user_id: $('#ac_user_id').val(),
-                        first_name: $('#ac_first_name').val(),
-                        last_name: $('#ac_last_name').val(),
-                        email: $('#ac_email').val(),
-                        company: $('#ac_company').val(),
-                        phone: $('#ac_phone').val(),
-                        address: $('#ac_address').val(),
-                        city: $('#ac_city').val(),
-                        state: $('#ac_state').val(),
-                        zip: $('#ac_zip').val(),
-                        country: $('#ac_country').val(),
-                        social_media: $('#ac_social_media').val()
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            WPLM_Enhanced_Admin.showNotification(response.data.message, 'success');
-                            WPLM_Enhanced_Admin.closeModal();
-                            if (response.data.redirect) {
-                                window.location.href = response.data.redirect;
-                            } else {
-                                $('#customers-table').DataTable().ajax.reload();
-                            }
-                        } else {
-                            WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
-                        }
-                    },
-                    error: function() {
-                        WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.error, 'error');
-                    },
-                    complete: function() {
-                        $submitButton.prop('disabled', false).text(wplm_admin.strings.add_customer || 'Add Customer');
+            $.ajax({
+                url: wplm_admin.ajax_url,
+                type: 'POST',
+                data: $form.serialize(),
+                success: function(response) {
+                    if (response.success) {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'success');
+                        $('#subscriptions-table').DataTable().ajax.reload();
+                        WPLM_Enhanced_Admin.closeCreateSubscriptionModal();
+                    } else {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
                     }
-                });
+                },
+                error: function() {
+                    WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.error, 'error');
+                },
+                complete: function() {
+                    $button.prop('disabled', false).text(originalText);
+                }
+            });
+        },
+        
+        /**
+         * Scan WooCommerce Orders for licensed products.
+         */
+        scanWooCommerceOrders: function() {
+            const $button = $(this);
+            const $form = $('#wc-bulk-form');
+            const $resultsDiv = $('#order-scan-results');
+            const $generateButton = $('#generate-licenses-button');
+            const originalButtonText = $button.text();
+
+            $button.prop('disabled', true).text(wplm_admin.strings.scanning_orders_text);
+            $generateButton.prop('disabled', true);
+            $resultsDiv.html('<div class="wplm-loading-spinner"></div> ' + wplm_admin.strings.scanning_orders_text + '...');
+
+            $.ajax({
+                url: wplm_admin.ajax_url,
+                type: 'POST',
+                data: $form.serialize() + '&action=wplm_scan_wc_orders' + '&nonce=' + wplm_admin.bulk_operations_nonce,
+                success: function(response) {
+                    if (response.success) {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'success');
+                        let resultsHtml = '<h4>' + response.data.message + '</h4>';
+                        if (response.data.scannable_orders.length > 0) {
+                            resultsHtml += '<p>' + wplm_admin.strings.orders_to_process + ':</p>';
+                            resultsHtml += '<ul class="wplm-list-disc wplm-list-inside">';
+                            response.data.scannable_orders.forEach(function(order) {
+                                resultsHtml += `<li><a href="${wplm_admin.admin_url}post.php?post=${order.order_id}&action=edit" target="_blank">#${order.order_number}</a> (${order.customer_email}) - ${order.total_products} ${wplm_admin.strings.licenses_text}</li>`;
+                            });
+                            resultsHtml += '</ul>';
+                            $generateButton.prop('disabled', false).data('products-to-license', response.data.products_to_license);
+                            $generateButton.data('send-emails', $form.find('input[name="send_emails"]').is(':checked'));
+
+                        } else {
+                            resultsHtml += '<p>' + wplm_admin.strings.no_orders_found + '</p>';
+                        }
+                        $resultsDiv.html(resultsHtml);
+                    } else {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
+                        $resultsDiv.html('<p class="error-message">' + response.data.message + '</p>');
+                    }
+                },
+                error: function() {
+                    WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.error_scanning_orders, 'error');
+                    $resultsDiv.html('<p class="error-message">' + wplm_admin.strings.error_scanning_orders + '</p>');
+                },
+                complete: function() {
+                    $button.prop('disabled', false).text(originalButtonText);
+                }
             });
         },
 
         /**
-         * Open create product modal
+         * Generate licenses for scanned WooCommerce orders.
          */
-        openCreateProductModal: function() {
-            const modalHtml = `
-                <div id="create-product-modal" class="wplm-modal">
-                    <div class="wplm-modal-content">
-                        <div class="wplm-modal-header">
-                            <h3>${wplm_admin.strings.add_new_product || 'Add New Product'}</h3>
-                            <span class="wplm-close">&times;</span>
-                        </div>
-                        <div class="wplm-modal-body">
-                            <form id="create-product-form">
-                                <table class="form-table">
-                                    <tr>
-                                        <th><label for="cp_product_name">${wplm_admin.strings.product_name}</label></th>
-                                        <td><input type="text" id="cp_product_name" name="product_name" class="regular-text" required /></td>
-                                    </tr>
-                                    <tr>
-                                        <th><label for="cp_product_id">${wplm_admin.strings.product_id}</label></th>
-                                        <td><input type="text" id="cp_product_id" name="product_id" class="regular-text" /></td>
-                                    </tr>
-                                    <tr>
-                                        <th><label for="cp_version">${wplm_admin.strings.version}</label></th>
-                                        <td><input type="text" id="cp_version" name="version" class="regular-text" /></td>
-                                    </tr>
-                                    <tr>
-                                        <th><label for="cp_total_licenses">${wplm_admin.strings.total_licenses}</label></th>
-                                        <td><input type="number" id="cp_total_licenses" name="total_licenses" value="1" min="1" style="width: 100px;" /></td>
-                                    </tr>
-                                    <tr>
-                                        <th><label for="cp_active_licenses">${wplm_admin.strings.active_licenses}</label></th>
-                                        <td><input type="number" id="cp_active_licenses" name="active_licenses" value="1" min="0" style="width: 100px;" /></td>
-                                    </tr>
-                                    <tr>
-                                        <th><label for="cp_wc_link">${wplm_admin.strings.woocommerce_product_link}</label></th>
-                                        <td><input type="url" id="cp_wc_link" name="wc_link" class="regular-text" /><p class="description">${wplm_admin.strings.woocommerce_product_link_desc}</p></td>
-                                    </tr>
-                                </table>
-                                <p class="submit">
-                                    <button type="submit" class="button button-primary" id="submit-create-product">${wplm_admin.strings.add_product || 'Add Product'}</button>
-                                </p>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            `;
+        generateWooCommerceLicenses: function() {
+            const $button = $(this);
+            const $resultsDiv = $('#wc-result');
+            const productsToLicense = $button.data('products-to-license');
+            const sendEmails = $button.data('send-emails');
+            const originalButtonText = $button.text();
 
-            $('body').append(modalHtml);
-            $('#create-product-modal').addClass('wplm-modal-show'); // Show the modal
+            if (!productsToLicense || Object.keys(productsToLicense).length === 0) {
+                WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.no_licenses_to_generate, 'warning');
+                return;
+            }
 
-            // Handle form submission
-            $('#create-product-form').on('submit', function(e) {
-                e.preventDefault();
-                const $form = $(this);
-                const $submitButton = $('#submit-create-product');
-                $submitButton.prop('disabled', true).text(wplm_admin.strings.loading || 'Adding Product...');
+            if (!confirm(wplm_admin.strings.confirm_generate_licenses)) {
+                return;
+            }
 
-                $.ajax({
-                    url: wplm_admin.ajax_url,
-                    type: 'POST',
-                    data: {
-                        action: 'wplm_create_product',
-                        nonce: wplm_admin.product_nonce,
-                        product_name: $('#cp_product_name').val(),
-                        product_id: $('#cp_product_id').val(),
-                        version: $('#cp_version').val(),
-                        total_licenses: $('#cp_total_licenses').val(),
-                        active_licenses: $('#cp_active_licenses').val(),
-                        wc_link: $('#cp_wc_link').val()
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            WPLM_Enhanced_Admin.showNotification(response.data.message, 'success');
-                            WPLM_Enhanced_Admin.closeModal();
-                            if (response.data.product_id) {
-                                window.location.href = wplm_admin.admin_url + 'post.php?post=' + response.data.product_id + '&action=edit';
-                            } else {
-                                $('#products-table').DataTable().ajax.reload();
-                            }
-                        } else {
-                            WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
+            $button.prop('disabled', true).text(wplm_admin.strings.generating_licenses_text);
+            $resultsDiv.html('<div class="wplm-loading-spinner"></div> ' + wplm_admin.strings.generating_licenses_text + '...');
+
+            $.ajax({
+                url: wplm_admin.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'wplm_generate_wc_licenses',
+                    nonce: wplm_admin.bulk_operations_nonce,
+                    orders_data: JSON.stringify(productsToLicense),
+                    send_emails: sendEmails,
+                },
+                success: function(response) {
+                    if (response.success) {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'success');
+                        let detailsHtml = '<h4>' + response.data.message + '</h4>';
+                        detailsHtml += '<p>' + wplm_admin.strings.generated_licenses_details + ':</p>';
+                        detailsHtml += '<ul class="wplm-list-disc wplm-list-inside">';
+                        response.data.details.forEach(function(license) {
+                            detailsHtml += `<li><a href="${wplm_admin.admin_url}post.php?post=${license.license_id}&action=edit" target="_blank">${license.license_key}</a> (${license.product_name}) for <a href="${wplm_admin.admin_url}post.php?post=${license.order_id}&action=edit" target="_blank">Order #${license.order_id}</a> - ${license.customer_email}</li>`;
+                        });
+                        detailsHtml += '</ul>';
+                        $resultsDiv.html(detailsHtml);
+                        // Optionally refresh licenses table if it's on the same page
+                        if ($('#licenses-table').length) {
+                            $('#licenses-table').DataTable().ajax.reload();
                         }
-                    },
-                    error: function() {
-                        WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.error, 'error');
-                    },
-                    complete: function() {
-                        $submitButton.prop('disabled', false).text(wplm_admin.strings.add_product || 'Add Product');
+                    } else {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
+                        $resultsDiv.html('<p class="error-message">' + response.data.message + '</p>');
                     }
-                });
+                },
+                error: function() {
+                    WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.error_generating_licenses, 'error');
+                    $resultsDiv.html('<p class="error-message">' + wplm_admin.strings.error_generating_licenses + '</p>');
+                },
+                complete: function() {
+                    $button.prop('disabled', false).text(originalButtonText);
+                }
             });
         }
     };

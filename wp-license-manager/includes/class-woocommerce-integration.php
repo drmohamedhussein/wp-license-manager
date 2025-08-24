@@ -33,6 +33,11 @@ class WPLM_WooCommerce_Integration {
         // Auto-sync between WC and WPLM products
         add_action('save_post', [$this, 'sync_woocommerce_to_wplm'], 20, 2);
 
+        // WPLM Product Data tab in WooCommerce
+        add_filter('woocommerce_product_data_tabs', [$this, 'add_wplm_product_data_tab']);
+        add_action('woocommerce_product_data_panels', [$this, 'add_wplm_product_data_panel']);
+        add_action('woocommerce_process_product_meta', [$this, 'save_wplm_product_data']);
+
         // WooCommerce Subscriptions Integration (Centralized in WPLM_Built_In_Subscription_System)
         // if (class_exists('WCS_Subscription')) {
         //     add_action('woocommerce_subscription_status_on-hold', [$this, 'subscription_status_changed'], 10, 1);
@@ -57,7 +62,14 @@ class WPLM_WooCommerce_Integration {
             $license_key = wc_get_order_item_meta($item_id, '_wplm_license_key', true);
 
             if (!empty($license_key)) {
-                $license_post = get_page_by_title($license_key, OBJECT, 'wplm_license');
+                $license_post_query = new WP_Query([
+                    'post_type'      => 'wplm_license',
+                    'posts_per_page' => 1,
+                    'title'          => $license_key,
+                    'fields'         => 'ids',
+                    'exact'          => true,
+                ]);
+                $license_post = $license_post_query->posts[0] ?? null;
 
                 if ($license_post) {
                     $wplm_status = '';
@@ -73,11 +85,11 @@ class WPLM_WooCommerce_Integration {
                     }
 
                     if (!empty($wplm_status)) {
-                        update_post_meta($license_post->ID, '_wplm_status', $wplm_status);
+                        update_post_meta($license_post, '_wplm_status', $wplm_status);
                         
                         if (class_exists('WPLM_Activity_Logger')) {
                             WPLM_Activity_Logger::log(
-                                $license_post->ID,
+                                $license_post,
                                 'license_status_updated_by_subscription',
                                 sprintf('License status updated to %s due to subscription status change to %s.', $wplm_status, $new_status),
                                 ['subscription_id' => $subscription->get_id(), 'new_wc_status' => $new_status, 'new_wplm_status' => $wplm_status]
@@ -99,6 +111,15 @@ class WPLM_WooCommerce_Integration {
 
         $order = wc_get_order($order_id);
         if (!$order) {
+            return;
+        }
+
+        // Check if WooCommerce integration is enabled and if the current order status is selected for license generation.
+        $integration_enabled = get_option('wplm_wc_integration_enabled', true);
+        $generation_statuses = get_option('wplm_wc_license_generation_statuses', ['wc-processing', 'wc-completed']);
+        $current_order_status = $order->get_status();
+        
+        if (!$integration_enabled || !in_array('wc-' . $current_order_status, $generation_statuses)) {
             return;
         }
 
@@ -189,10 +210,18 @@ class WPLM_WooCommerce_Integration {
             // Log activity
             if (class_exists('WPLM_Activity_Logger')) {
                 foreach ($generated_licenses as $license_key) {
-                    $license_post = get_page_by_title($license_key, OBJECT, 'wplm_license');
-                    if ($license_post) {
+                    $license_post_query = new WP_Query([
+                        'post_type'      => 'wplm_license',
+                        'posts_per_page' => 1,
+                        'title'          => $license_key,
+                        'fields'         => 'ids',
+                        'exact'          => true,
+                    ]);
+                    $license_post_id = $license_post_query->posts[0] ?? null;
+
+                    if ($license_post_id) {
                         WPLM_Activity_Logger::log(
-                            $license_post->ID,
+                            $license_post_id,
                             'license_generated_from_wc_order',
                             sprintf('License generated from WooCommerce order #%d for customer %s', $order_id, $customer_email),
                             ['order_id' => $order_id, 'customer_email' => $customer_email]
@@ -307,9 +336,10 @@ class WPLM_WooCommerce_Integration {
             }
             
             return $license_key;
+        } else {
+            error_log('WPLM Error: Failed to create license post for product ID ' . $wplm_product_id . '. Error: ' . $license_id->get_error_message());
+            return false;
         }
-        
-        return false;
     }
     
     /**
@@ -363,6 +393,118 @@ class WPLM_WooCommerce_Integration {
                 $notification_manager->send_license_delivery_email($order->get_billing_email(), $license_key, $order->get_id(), $order);
             }
         }
+    }
+
+    /**
+     * Add WPLM tab to WooCommerce product data meta box.
+     *
+     * @param array $tabs Existing product data tabs.
+     * @return array Modified product data tabs.
+     */
+    public function add_wplm_product_data_tab($tabs) {
+        // Check if meta boxes should be hidden
+        if (get_option('wplm_wc_hide_meta_boxes', false)) {
+            return $tabs;
+        }
+
+        $tabs['wplm_licenses'] = [
+            'label'    => __('WPLM Licenses', 'wp-license-manager'),
+            'target'   => 'wplm_product_data',
+            'class'    => ['hide_if_grouped', 'hide_if_external', 'hide_if_variable'],
+            'priority' => 70,
+        ];
+        return $tabs;
+    }
+
+    /**
+     * Display the WPLM product data panel content.
+     */
+    public function add_wplm_product_data_panel() {
+        // Check if meta boxes should be hidden
+        if (get_option('wplm_wc_hide_meta_boxes', false)) {
+            return;
+        }
+
+        global $post;
+        $product_id = $post->ID;
+
+        // Get current linked WPLM product ID and license status
+        $linked_wplm_product_id = get_post_meta($product_id, '_wplm_wc_linked_wplm_product_id', true);
+        $is_licensed = get_post_meta($product_id, '_wplm_wc_is_licensed_product', true) === 'yes';
+
+        echo '<div id="wplm_product_data" class="panel woocommerce_options_panel hidden">';
+        echo '<div class="options_group">';
+
+        woocommerce_wp_checkbox([
+            'id'            => '_wplm_wc_is_licensed_product',
+            'value'         => $is_licensed ? 'yes' : 'no',
+            'cbvalue'       => 'yes',
+            'label'         => __('Enable WPLM Licensing', 'wp-license-manager'),
+            'description'   => __('Check this box to enable WPLM license key generation and management for this product.', 'wp-license-manager'),
+        ]);
+
+        // Fetch all WPLM products for the dropdown
+        $wplm_products = get_posts([
+            'post_type'      => 'wplm_product',
+            'posts_per_page' => -1,
+            'post_status'    => 'publish',
+            'orderby'        => 'title',
+            'order'          => 'ASC',
+            'fields'         => 'ids', // Get only IDs for performance
+        ]);
+
+        $product_options = ['' => __('-- Select WPLM Product --', 'wp-license-manager')];
+        if (!empty($wplm_products)) {
+            foreach ($wplm_products as $wplm_p_id) {
+                $product_options[$wplm_p_id] = get_the_title($wplm_p_id) . ' (ID: ' . $wplm_p_id . ')';
+            }
+        }
+
+        woocommerce_wp_select([
+            'id'            => '_wplm_wc_linked_wplm_product_id',
+            'label'         => __('Linked WPLM Product', 'wp-license-manager'),
+            'options'       => $product_options,
+            'value'         => $linked_wplm_product_id,
+            'description'   => __('Link this WooCommerce product to an existing WPLM product. If left unlinked and licensing is enabled, a new WPLM product will be created automatically.', 'wp-license-manager'),
+            'wrapper_class' => 'form-field _wplm_wc_linked_wplm_product_id_field',
+        ]);
+
+        echo '</div>';
+        echo '</div>';
+
+        // Add JavaScript to toggle visibility based on checkbox
+        ?>
+        <script type="text/javascript">
+            jQuery(document).ready(function($) {
+                function toggleWPLMLinkedProductField() {
+                    if ($('#_wplm_wc_is_licensed_product').is(':checked')) {
+                        $('._wplm_wc_linked_wplm_product_id_field').show();
+                    } else {
+                        $('._wplm_wc_linked_wplm_product_id_field').hide();
+                    }
+                }
+                toggleWPLMLinkedProductField();
+                $('#_wplm_wc_is_licensed_product').change(toggleWPLMLinkedProductField);
+            });
+        </script>
+        <?php
+    }
+
+    /**
+     * Save WPLM product data from the WooCommerce product edit screen.
+     * @param int $post_id The ID of the post being saved.
+     */
+    public function save_wplm_product_data($post_id) {
+        // Check if meta boxes should be hidden
+        if (get_option('wplm_wc_hide_meta_boxes', false)) {
+            return;
+        }
+        
+        $is_licensed = isset($_POST['_wplm_wc_is_licensed_product']) ? 'yes' : 'no';
+        update_post_meta($post_id, '_wplm_wc_is_licensed_product', $is_licensed);
+
+        $linked_wplm_product_id = isset($_POST['_wplm_wc_linked_wplm_product_id']) ? absint($_POST['_wplm_wc_linked_wplm_product_id']) : '';
+        update_post_meta($post_id, '_wplm_wc_linked_wplm_product_id', $linked_wplm_product_id);
     }
     
     /**
@@ -677,12 +819,41 @@ class WPLM_WooCommerce_Integration {
      * Sync WooCommerce product changes to WPLM
      */
     public function sync_woocommerce_to_wplm($post_id, $post) {
+        // If WPLM meta boxes are hidden, assume WPLM product management is not desired for WC products,
+        // so skip synchronization, unless an explicit link already exists.
+        if (get_option('wplm_wc_hide_meta_boxes', false) && empty(get_post_meta($post_id, '_wplm_wc_linked_wplm_product_id', true))) {
+            return;
+        }
+
         if ($post->post_type !== 'product' || wp_is_post_revision($post_id)) {
             return;
         }
         
         $is_licensed = get_post_meta($post_id, '_wplm_wc_is_licensed_product', true);
         if ($is_licensed !== 'yes') {
+            // If not marked as licensed, ensure no WPLM product is linked (clean up)
+            delete_post_meta($post_id, '_wplm_wc_linked_wplm_product_id');
+            delete_post_meta($post_id, '_wplm_wc_linked_wplm_product');
+            // Also, clean up WPLM product if it was created solely for this WC product
+            $wplm_product_id = get_post_meta($post_id, '_wplm_wc_product_id', true); // Check WPLM product's meta
+            if ($wplm_product_id) {
+                $wplm_product = get_post($wplm_product_id);
+                if ($wplm_product && $wplm_product->post_type === 'wplm_product') {
+                    // Check if this WPLM product is exclusively linked to this WC product
+                    $linked_wc_id = get_post_meta($wplm_product_id, '_wplm_wc_product_id', true);
+                    if ((int)$linked_wc_id === $post_id) {
+                        wp_delete_post($wplm_product_id, true); // Delete WPLM product permanently
+                        if (class_exists('WPLM_Activity_Logger')) {
+                            WPLM_Activity_Logger::log(
+                                $post_id,
+                                'wplm_product_unlinked_and_deleted',
+                                sprintf('WPLM product (ID: %d) unlinked and deleted because WooCommerce product (ID: %d) is no longer licensed.', $wplm_product_id, $post_id),
+                                ['wc_product_id' => $post_id, 'wplm_product_id' => $wplm_product_id]
+                            );
+                        }
+                    }
+                }
+            }
             return;
         }
         
@@ -736,10 +907,14 @@ class WPLM_WooCommerce_Integration {
             update_post_meta($wplm_product_post->ID, '_wplm_wc_product_id', $post_id);
         } else {
             // If no WPLM product is linked, and the WC product is licensed, create a new one.
-            $wplm_product_id = $this->create_wplm_product_from_wc($post, $post_id); // Pass $post object directly
-            if ($wplm_product_id) {
-                // Link the newly created WPLM product back to the WooCommerce product
-                update_post_meta($post_id, '_wplm_wc_linked_wplm_product_id', $wplm_product_id);
+            // Only create if not explicitly linked to an existing WPLM product via the meta box.
+            $linked_wplm_product_id_from_meta = get_post_meta($post_id, '_wplm_wc_linked_wplm_product_id', true);
+            if (empty($linked_wplm_product_id_from_meta)) {
+                $wplm_product_id = $this->create_wplm_product_from_wc($post, $post_id); // Pass $post object directly
+                if ($wplm_product_id) {
+                    // Link the newly created WPLM product back to the WooCommerce product
+                    update_post_meta($post_id, '_wplm_wc_linked_wplm_product_id', $wplm_product_id);
+                }
             }
         }
     }

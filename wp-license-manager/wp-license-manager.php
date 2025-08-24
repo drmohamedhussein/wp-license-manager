@@ -41,6 +41,7 @@ if (version_compare(PHP_VERSION, '7.4', '<')) {
 define('WPLM_VERSION', '2.0.0');
 define('WPLM_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('WPLM_PLUGIN_FILE', __FILE__); // Define plugin file for hooks
+define('WPLM_URL', plugin_dir_url(__FILE__)); // Define plugin URL for assets
 
 /**
  * The main plugin class.
@@ -124,8 +125,8 @@ final class WP_License_Manager {
             'includes/class-enhanced-digital-downloads.php',
             'includes/class-rest-api-manager.php',
             'includes/class-analytics-dashboard.php',
-            'includes/class-auto-licenser-system.php',
             'includes/class-bulk-operations-manager.php',
+            'includes/class-automatic-licenser.php', // Corrected class name
             'includes/class-email-notification-system.php',
         ];
 
@@ -254,8 +255,8 @@ final class WP_License_Manager {
             new WPLM_Analytics_Dashboard(); // Initialize analytics dashboard
         }
         
-        if (class_exists('WPLM_Auto_Licenser_System')) {
-            new WPLM_Auto_Licenser_System(); // Initialize auto licenser system
+        if (class_exists('WPLM_Automatic_Licenser')) {
+            new WPLM_Automatic_Licenser(); // Initialize automatic licenser system
         }
         
         if (class_exists('WPLM_Enhanced_Digital_Downloads')) {

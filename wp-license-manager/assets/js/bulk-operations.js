@@ -10,6 +10,7 @@
         init: function() {
             this.bindEvents();
             this.initTabs();
+            this.initSelect2();
         },
 
         bindEvents: function() {
@@ -20,11 +21,20 @@
             $('#load-licenses').on('click', this.loadLicenses);
             $('#select-all-licenses').on('click', this.selectAllLicenses);
             $('#deselect-all-licenses').on('click', this.deselectAllLicenses);
+            $('#license-status-filter, #license-product-filter, #license-customer-filter, #license-expiry-from, #license-expiry-to').on('change', function() {
+                // Automatically trigger load licenses when filters change
+                WPLM_Bulk.loadLicenses();
+            });
+
             
             // Bulk actions
             $('.bulk-action').on('click', this.handleBulkAction);
             $('#confirm-extend').on('click', this.confirmExtend);
-            $('#cancel-extend').on('click', this.cancelExtend);
+            $('#confirm-set-expiry').on('click', this.confirmSetExpiry);
+            $('#confirm-set-activation-limit').on('click', this.confirmSetActivationLimit);
+            $('#confirm-change-product').on('click', this.confirmChangeProduct);
+            $('#confirm-transfer-customer').on('click', this.confirmTransferCustomer);
+            $('.wplm-bulk-action-options #cancel-action').on('click', this.cancelAction);
             
             // WooCommerce orders
             $('#scan-orders').on('click', this.scanWcOrders);
@@ -76,7 +86,14 @@
             
             // Add form data
             $form.serializeArray().forEach(function(item) {
-                data[item.name] = item.value;
+                // Use specific IDs for Select2 fields to get their selected value
+                if (item.name === 'product_id') {
+                    data[item.name] = $('#bulk_create_product_id').val();
+                } else if (item.name === 'customer_id') {
+                    data[item.name] = $('#bulk_create_customer_id').val();
+                } else {
+                    data[item.name] = item.value;
+                }
             });
             
             WPLM_Bulk.simulateProgress($progress, count * 100); // Simulate progress based on count
@@ -129,6 +146,9 @@
             var $list = $('#license-list');
             var status = $('#license-status-filter').val();
             var product = $('#license-product-filter').val();
+            var customer = $('#license-customer-filter').val();
+            var expiryFrom = $('#license-expiry-from').val();
+            var expiryTo = $('#license-expiry-to').val();
             
             $list.html('<p>Loading licenses...</p>');
             
@@ -139,7 +159,10 @@
                     action: 'wplm_get_licenses_for_bulk',
                     nonce: wplm_bulk.nonce,
                     status: status,
-                    product: product
+                    product: product,
+                    customer: customer,
+                    expiry_from: expiryFrom,
+                    expiry_to: expiryTo
                 },
                 success: function(response) {
                     if (response.success && response.data.licenses) {
@@ -149,14 +172,15 @@
                             html += '<label>';
                             html += '<input type="checkbox" name="license_ids[]" value="' + license.id + '" />';
                             html += '<strong>' + license.key + '</strong><br>';
-                            html += 'Product: ' + license.product + '<br>';
+                            html += 'Product: ' + license.product + ' (ID: ' + license.product_id + ')<br>';
+                            if (license.customer !== 'N/A') {
+                                html += 'Customer: ' + license.customer + ' (Email: ' + license.customer_email + ')<br>';
+                            }
                             html += 'Status: <span class="status-' + license.status + '">' + license.status + '</span><br>';
-                            if (license.customer) {
-                                html += 'Customer: ' + license.customer + '<br>';
-                            }
                             if (license.expiry) {
-                                html += 'Expires: ' + license.expiry;
+                                html += 'Expires: ' + license.expiry + '<br>';
                             }
+                            html += 'Activations: ' + license.activations + ' / ' + license.activation_limit + '<br>';
                             html += '</label>';
                             html += '</div>';
                         });
@@ -193,17 +217,35 @@
                 return;
             }
             
-            if (action === 'extend') {
-                $('#extend-options').show();
-                return;
-            }
-            
-            if (action === 'delete') {
-                if (!confirm(wplm_bulk.strings.confirm_delete)) {
+            // Hide all option containers first
+            $('.wplm-bulk-action-options').hide();
+
+            switch (action) {
+                case 'extend':
+                    $('#extend-options').show();
                     return;
-                }
-            } else if (!confirm(wplm_bulk.strings.confirm_operation)) {
-                return;
+                case 'set_expiry':
+                    $('#set-expiry-options').show();
+                    return;
+                case 'set_activation_limit':
+                    $('#set-activation-limit-options').show();
+                    return;
+                case 'change_product':
+                    $('#change-product-options').show();
+                    return;
+                case 'transfer_customer':
+                    $('#transfer-customer-options').show();
+                    return;
+                case 'delete':
+                    if (!confirm(wplm_bulk.strings.confirm_delete)) {
+                        return;
+                    }
+                    break; // Proceed to performBulkAction
+                default:
+                    if (!confirm(wplm_bulk.strings.confirm_operation)) {
+                        return;
+                    }
+                    break; // Proceed to performBulkAction
             }
             
             WPLM_Bulk.performBulkAction(action, selectedLicenses);
@@ -223,7 +265,8 @@
             
             var ajaxAction = actionMap[action];
             if (!ajaxAction) {
-                alert('Invalid action');
+                // This should not happen if handleBulkAction correctly directs flows
+                alert(wplm_bulk.strings.invalid_action_or_confirmation);
                 return;
             }
             
@@ -268,7 +311,7 @@
             }
             
             if (!extendValue || extendValue < 1) {
-                alert('Please enter a valid extension value.');
+                alert(wplm_bulk.strings.invalid_extension_value);
                 return;
             }
             
@@ -312,6 +355,314 @@
 
         cancelExtend: function() {
             $('#extend-options').hide();
+        },
+
+        /**
+         * Cancel any bulk action options display.
+         */
+        cancelAction: function() {
+            $('.wplm-bulk-action-options').hide();
+        },
+
+        /**
+         * Confirm setting new expiry date
+         */
+        confirmSetExpiry: function() {
+            var selectedLicenses = $('#license-list input[type="checkbox"]:checked');
+            var newExpiryDate = $('#new-expiry-date').val();
+
+            if (selectedLicenses.length === 0) {
+                alert(wplm_bulk.strings.select_licenses);
+                return;
+            }
+
+            if (!newExpiryDate) {
+                alert(wplm_bulk.strings.invalid_expiry_date);
+                return;
+            }
+            
+            if (!confirm(wplm_bulk.strings.confirm_operation)) {
+                return;
+            }
+
+            var licenseIds = [];
+            selectedLicenses.each(function() {
+                licenseIds.push($(this).val());
+            });
+
+            $.ajax({
+                url: wplm_bulk.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'wplm_bulk_set_expiry',
+                    nonce: wplm_bulk.nonce,
+                    license_ids: licenseIds,
+                    new_expiry_date: newExpiryDate
+                },
+                success: function(response) {
+                    var $result = $('#manage-result');
+                    if (response.success) {
+                        $result.removeClass('error').addClass('success').show();
+                        $result.html('<h3>Success!</h3><p>' + response.data.message + '</p>');
+                        WPLM_Bulk.loadLicenses();
+                        $('#set-expiry-options').hide();
+                    } else {
+                        $result.removeClass('success').addClass('error').show();
+                        $result.html('<h3>Error</h3><p>' + response.data.message + '</p>');
+                    }
+                },
+                error: function() {
+                    var $result = $('#manage-result');
+                    $result.removeClass('success').addClass('error').show();
+                    $result.html('<h3>Error</h3><p>' + wplm_bulk.strings.error + '</p>');
+                }
+            });
+        },
+
+        /**
+         * Confirm setting new activation limit
+         */
+        confirmSetActivationLimit: function() {
+            var selectedLicenses = $('#license-list input[type="checkbox"]:checked');
+            var newLimit = $('#new-activation-limit-value').val();
+
+            if (selectedLicenses.length === 0) {
+                alert(wplm_bulk.strings.select_licenses);
+                return;
+            }
+
+            if (newLimit < 0) {
+                alert(wplm_bulk.strings.invalid_activation_limit);
+                return;
+            }
+
+            if (!confirm(wplm_bulk.strings.confirm_operation)) {
+                return;
+            }
+
+            var licenseIds = [];
+            selectedLicenses.each(function() {
+                licenseIds.push($(this).val());
+            });
+
+            $.ajax({
+                url: wplm_bulk.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'wplm_bulk_set_activation_limit',
+                    nonce: wplm_bulk.nonce,
+                    license_ids: licenseIds,
+                    new_limit: newLimit
+                },
+                success: function(response) {
+                    var $result = $('#manage-result');
+                    if (response.success) {
+                        $result.removeClass('error').addClass('success').show();
+                        $result.html('<h3>Success!</h3><p>' + response.data.message + '</p>');
+                        WPLM_Bulk.loadLicenses();
+                        $('#set-activation-limit-options').hide();
+                    } else {
+                        $result.removeClass('success').addClass('error').show();
+                        $result.html('<h3>Error</h3><p>' + response.data.message + '</p>');
+                    }
+                },
+                error: function() {
+                    var $result = $('#manage-result');
+                    $result.removeClass('success').addClass('error').show();
+                    $result.html('<h3>Error</h3><p>' + wplm_bulk.strings.error + '</p>');
+                }
+            });
+        },
+
+        /**
+         * Confirm changing product for licenses
+         */
+        confirmChangeProduct: function() {
+            var selectedLicenses = $('#license-list input[type="checkbox"]:checked');
+            var newProductId = $('#new-product-id').val();
+
+            if (selectedLicenses.length === 0) {
+                alert(wplm_bulk.strings.select_licenses);
+                return;
+            }
+
+            if (!newProductId) {
+                alert(wplm_bulk.strings.select_new_product);
+                return;
+            }
+
+            if (!confirm(wplm_bulk.strings.confirm_operation)) {
+                return;
+            }
+
+            var licenseIds = [];
+            selectedLicenses.each(function() {
+                licenseIds.push($(this).val());
+            });
+
+            $.ajax({
+                url: wplm_bulk.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'wplm_bulk_change_product',
+                    nonce: wplm_bulk.nonce,
+                    license_ids: licenseIds,
+                    new_product_id: newProductId
+                },
+                success: function(response) {
+                    var $result = $('#manage-result');
+                    if (response.success) {
+                        $result.removeClass('error').addClass('success').show();
+                        $result.html('<h3>Success!</h3><p>' + response.data.message + '</p>');
+                        WPLM_Bulk.loadLicenses();
+                        $('#change-product-options').hide();
+                    } else {
+                        $result.removeClass('success').addClass('error').show();
+                        $result.html('<h3>Error</h3><p>' + response.data.message + '</p>');
+                    }
+                },
+                error: function() {
+                    var $result = $('#manage-result');
+                    $result.removeClass('success').addClass('error').show();
+                    $result.html('<h3>Error</h3><p>' + wplm_bulk.strings.error + '</p>');
+                }
+            });
+        },
+
+        /**
+         * Confirm transferring licenses to a new customer
+         */
+        confirmTransferCustomer: function() {
+            var selectedLicenses = $('#license-list input[type="checkbox"]:checked');
+            var newCustomerId = $('#new-customer-id').val();
+
+            if (selectedLicenses.length === 0) {
+                alert(wplm_bulk.strings.select_licenses);
+                return;
+            }
+
+            if (!newCustomerId) {
+                alert(wplm_bulk.strings.select_new_customer);
+                return;
+            }
+
+            if (!confirm(wplm_bulk.strings.confirm_operation)) {
+                return;
+            }
+
+            var licenseIds = [];
+            selectedLicenses.each(function() {
+                licenseIds.push($(this).val());
+            });
+
+            $.ajax({
+                url: wplm_bulk.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'wplm_bulk_transfer_customer',
+                    nonce: wplm_bulk.nonce,
+                    license_ids: licenseIds,
+                    new_customer_id: newCustomerId
+                },
+                success: function(response) {
+                    var $result = $('#manage-result');
+                    if (response.success) {
+                        $result.removeClass('error').addClass('success').show();
+                        $result.html('<h3>Success!</h3><p>' + response.data.message + '</p>');
+                        WPLM_Bulk.loadLicenses();
+                        $('#transfer-customer-options').hide();
+                    } else {
+                        $result.removeClass('success').addClass('error').show();
+                        $result.html('<h3>Error</h3><p>' + response.data.message + '</p>');
+                    }
+                },
+                error: function() {
+                    var $result = $('#manage-result');
+                    $result.removeClass('success').addClass('error').show();
+                    $result.html('<h3>Error</h3><p>' + wplm_bulk.strings.error + '</p>');
+                }
+            });
+        },
+
+        /**
+         * Initialize Select2 dropdowns
+         */
+        initSelect2: function() {
+            if ($.fn.select2) {
+                // Bulk Create Product Select
+                $('#bulk_create_product_id, #license-product-filter, #new-product-id').select2({
+                    placeholder: wplm_admin.strings.select_product_for_bulk_create,
+                    allowClear: true,
+                    ajax: {
+                        url: wplm_bulk.ajax_url,
+                        dataType: 'json',
+                        delay: 250,
+                        data: function (params) {
+                            return {
+                                action: 'wplm_search_products',
+                                nonce: wplm_bulk.nonce,
+                                search: params.term,
+                                page: params.page
+                            };
+                        },
+                        processResults: function (data, params) {
+                            params.page = params.page || 1;
+                            return {
+                                results: data.data.products,
+                                pagination: {
+                                    more: (params.page * 30) < data.data.total_count
+                                }
+                            };
+                        },
+                        cache: true
+                    },
+                    minimumInputLength: 2,
+                    templateResult: function(product) {
+                        if (product.loading) return product.text;
+                        return `<div>${product.text} (ID: ${product.id})</div>`;
+                    },
+                    templateSelection: function(product) {
+                        return product.text || product.id;
+                    }
+                });
+
+                // Bulk Create Customer Select
+                $('#bulk_create_customer_id, #license-customer-filter, #new-customer-id').select2({
+                    placeholder: wplm_admin.strings.select_customer_for_bulk_create,
+                    allowClear: true,
+                    ajax: {
+                        url: wplm_bulk.ajax_url,
+                        dataType: 'json',
+                        delay: 250,
+                        data: function (params) {
+                            return {
+                                action: 'wplm_search_customers',
+                                nonce: wplm_bulk.nonce,
+                                search: params.term,
+                                page: params.page
+                            };
+                        },
+                        processResults: function (data, params) {
+                            params.page = params.page || 1;
+                            return {
+                                results: data.data.customers,
+                                pagination: {
+                                    more: (params.page * 30) < data.data.total_count
+                                }
+                            };
+                        },
+                        cache: true
+                    },
+                    minimumInputLength: 2,
+                    templateResult: function(customer) {
+                        if (customer.loading) return customer.text;
+                        return `<div>${customer.text} (${customer.email})</div>`;
+                    },
+                    templateSelection: function(customer) {
+                        return customer.text || customer.id;
+                    }
+                });
+            }
         },
 
         simulateProgress: function($progressBar, duration) {
@@ -468,40 +819,60 @@
                 data: {
                     action: 'wplm_preview_bulk_update',
                     nonce: wplm_bulk.nonce,
-                    ...formData
+                    filters: {
+                        license_status: $('#bulk-update-status-filter').val(),
+                        product_id: $('#bulk-update-product-filter').val(),
+                    },
+                    update_data: {
+                        new_status: $('#bulk-update-new-status').val(),
+                        new_activation_limit: $('#bulk-update-new-activation-limit').val(),
+                        extend_expiry_days: $('#bulk-update-extend-expiry').val(),
+                    }
                 },
                 success: function(response) {
                     if (response.success) {
                         var data = response.data;
-                        var html = '<h3>Preview Changes</h3>';
-                        html += '<p><strong>Licenses to be updated:</strong> ' + data.count + '</p>';
+                        var html = '<h3>' + wplm_bulk.strings.preview_changes + '</h3>';
+                        html += '<p><strong>' + wplm_bulk.strings.licenses_to_be_updated + ':</strong> ' + data.licenses.length + '</p>';
                         
-                        if (data.count > 0) {
-                            html += '<p>The following changes will be applied:</p><ul>';
-                            if (data.changes.status) {
-                                html += '<li>Status: ' + data.changes.status + '</li>';
+                        if (data.licenses.length > 0) {
+                            html += '<p>' + wplm_bulk.strings.changes_to_be_applied + ':</p><ul>';
+                            var updateData = {};
+                            // Collect update data from form fields to display in preview
+                            if ($('#bulk-update-new-status').val()) {
+                                updateData.new_status = $('#bulk-update-new-status').val();
+                                html += '<li>' + wplm_bulk.strings.status_change_to + ': <strong>' + updateData.new_status + '</strong></li>';
                             }
-                            if (data.changes.activation_limit) {
-                                html += '<li>Activation Limit: ' + data.changes.activation_limit + '</li>';
+                            if ($('#bulk-update-new-activation-limit').val()) {
+                                updateData.new_activation_limit = $('#bulk-update-new-activation-limit').val();
+                                html += '<li>' + wplm_bulk.strings.activation_limit_change_to + ': <strong>' + updateData.new_activation_limit + '</strong></li>';
                             }
-                            if (data.changes.extend_expiry) {
-                                html += '<li>Extend Expiry: ' + data.changes.extend_expiry + '</li>';
+                            if ($('#bulk-update-extend-expiry').val()) {
+                                updateData.extend_expiry_days = $('#bulk-update-extend-expiry').val();
+                                html += '<li>' + wplm_bulk.strings.extend_expiry_by + ': <strong>' + updateData.extend_expiry_days + ' days</strong></li>';
                             }
                             html += '</ul>';
+
+                            html += '<h4>' + wplm_bulk.strings.affected_licenses + ':</h4>';
+                            html += '<div class="wplm-licenses-preview-list">';
+                            data.licenses.forEach(function(license) {
+                                html += '<p><strong>' + license.license_key + '</strong> (Product: ' + license.product + ', Status: ' + license.license_status + ')</p>';
+                            });
+                            html += '</div>';
                             
                             $button.prop('disabled', false);
                         } else {
-                            html += '<p>No licenses match the specified criteria.</p>';
+                            html += '<p>' + wplm_bulk.strings.no_licenses_match_criteria + '</p>';
                             $button.prop('disabled', true);
                         }
                         
                         $preview.html(html);
                     } else {
-                        $preview.html('<p class="error">Error: ' + response.data.message + '</p>');
+                        $preview.html('<p class="error">' + (response.data.message || wplm_bulk.strings.error_loading_preview) + '</p>');
                     }
                 },
                 error: function() {
-                    $preview.html('<p class="error">Error loading preview.</p>');
+                    $preview.html('<p class="error">' + wplm_bulk.strings.error_loading_preview + '</p>');
                 }
             });
         },
@@ -509,7 +880,7 @@
         handleBulkUpdate: function(e) {
             e.preventDefault();
             
-            if (!confirm('Apply bulk updates to the selected licenses?')) {
+            if (!confirm(wplm_bulk.strings.confirm_apply_updates)) {
                 return;
             }
             
@@ -517,12 +888,18 @@
             var $button = $form.find('button[type="submit"]');
             var $result = $('#update-result');
             
-            $button.prop('disabled', true).text('Updating...');
+            $button.prop('disabled', true).text(wplm_bulk.strings.updating_text);
             
-            var formData = {};
-            $form.serializeArray().forEach(function(item) {
-                formData[item.name] = item.value;
-            });
+            // Collect filters and update data directly from the form
+            var filters = {
+                license_status: $('#bulk-update-status-filter').val(),
+                product_id: $('#bulk-update-product-filter').val(),
+            };
+            var update_data = {
+                new_status: $('#bulk-update-new-status').val(),
+                new_activation_limit: $('#bulk-update-new-activation-limit').val(),
+                extend_expiry_days: $('#bulk-update-extend-expiry').val(),
+            };
             
             $.ajax({
                 url: wplm_bulk.ajax_url,
@@ -530,23 +907,26 @@
                 data: {
                     action: 'wplm_bulk_update_licenses',
                     nonce: wplm_bulk.nonce,
-                    ...formData
+                    filters: filters,
+                    update_data: update_data
                 },
                 success: function(response) {
-                    $button.prop('disabled', false).text('Apply Updates');
+                    $button.prop('disabled', false).text(wplm_bulk.strings.apply_updates_text);
                     
                     if (response.success) {
                         $result.removeClass('error').addClass('success').show();
-                        $result.html('<h3>Success!</h3><p>' + response.data.message + '</p>');
+                        $result.html('<h3>' + wplm_bulk.strings.success_text + '!</h3><p>' + response.data.message + '</p>');
+                        // Optionally clear filters or reload main license list
+                        // WPLM_Bulk.loadLicenses();
                     } else {
                         $result.removeClass('success').addClass('error').show();
-                        $result.html('<h3>Error</h3><p>' + response.data.message + '</p>');
+                        $result.html('<h3>' + wplm_bulk.strings.error_text + '</h3><p>' + response.data.message + '</p>');
                     }
                 },
                 error: function() {
-                    $button.prop('disabled', false).text('Apply Updates');
+                    $button.prop('disabled', false).text(wplm_bulk.strings.apply_updates_text);
                     $result.removeClass('success').addClass('error').show();
-                    $result.html('<h3>Error</h3><p>' + wplm_bulk.strings.error + '</p>');
+                    $result.html('<h3>' + wplm_bulk.strings.error_text + '</h3><p>' + wplm_bulk.strings.error_applying_updates + '</p>');
                 }
             });
         }

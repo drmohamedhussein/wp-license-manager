@@ -11,75 +11,78 @@ class WPLM_Admin_Manager {
     private $products_map = null;
 
     public function __construct() {
-        add_action('admin_init', [$this, 'init']);
-        add_action('admin_menu', [$this, 'add_admin_menu_pages']);
-        add_action('add_meta_boxes', [$this, 'add_license_product_meta_boxes']);
-        add_action('save_post', [$this, 'save_license_meta']);
-        add_action('save_post', [$this, 'save_product_meta']);
-        add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_scripts']);
+        add_action('add_meta_boxes', [$this, 'add_meta_boxes']);
+        add_action('save_post', [$this, 'save_post_meta']);
         add_action('wp_ajax_wplm_generate_key', [$this, 'ajax_generate_key']);
-        add_action('wp_ajax_wplm_search_products', [$this, 'ajax_search_products']); // New AJAX for product search
-        add_action('wp_ajax_wplm_scan_orders', [$this, 'ajax_scan_orders']); // AJAX for scanning WC orders
-        add_action('wp_ajax_wplm_scan_orders_new', [$this, 'ajax_scan_orders_new']); // New AJAX for scanning WC orders
-        add_action('wp_ajax_wplm_create_customer_profile', [$this, 'ajax_create_customer_profile']); // AJAX for creating new customer profiles
-        add_action('wp_ajax_wplm_search_woocommerce_products', [$this, 'ajax_search_woocommerce_products']); // AJAX for searching WooCommerce products
-        add_action('wp_ajax_wplm_filter_activity_log', [$this, 'ajax_filter_activity_log']); // AJAX for filtering activity log
-        add_action('wp_ajax_wplm_clear_activity_log', [$this, 'ajax_clear_activity_log']); // AJAX for clearing activity log
-        add_action('wp_ajax_wplm_get_activity_logs', [$this, 'ajax_get_activity_logs']); // AJAX for getting activity logs for datatable
-    }
+        
+        // Admin menu handled by Enhanced Admin Manager to prevent duplicates
+        // add_action('admin_menu', [$this, 'add_enhanced_admin_menu']);
+        // Settings handled by Enhanced Admin Manager to prevent duplicates
+        // add_action('admin_init', [$this, 'register_main_settings']);
 
-    public function init() {
-        // No-op for now
+        // Enqueue admin scripts and styles for settings page
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
+
+        // Export/Import functionality
+        add_action('wp_ajax_wplm_export_licenses', [$this, 'ajax_export_licenses']);
+        add_action('admin_init', [$this, 'handle_import_licenses_submission']); // Handle import on admin_init
+        add_action('admin_post_wplm_export_licenses', [$this, 'handle_export_licenses_submission_post']); // Handle non-AJAX export form submission
+
+        // API Key generation AJAX (remains, as it's a backend process)
+        add_action('wp_ajax_wplm_generate_api_key', [$this, 'ajax_generate_api_key']);
+
+        // Custom columns for the license list
+        add_filter('manage_wplm_license_posts_columns', [$this, 'add_license_columns']);
+        add_action('manage_wplm_license_posts_custom_column', [$this, 'render_license_columns'], 10, 2);
+        add_filter('manage_edit-wplm_license_sortable_columns', [$this, 'make_columns_sortable']);
+        add_action('pre_get_posts', [$this, 'customize_license_query']);
+
+        add_action('wp_ajax_wplm_get_customer_details', [$this, 'ajax_get_customer_details']);
+        add_action('wp_ajax_wplm_filter_activity_log', [$this, 'ajax_filter_activity_log']);
+        add_action('wp_ajax_wplm_clear_activity_log', [$this, 'ajax_clear_activity_log']);
+        add_action('wp_ajax_wplm_filter_subscriptions', [$this, 'ajax_filter_subscriptions']);
     }
 
     /**
-     * Add admin menu pages
+     * Add the dashboard widget.
      */
-    public function add_admin_menu_pages() {
-        add_menu_page(
-            __('WP License Manager', 'wp-license-manager'),
-            __('License Manager', 'wp-license-manager'),
-            'manage_options',
-            'wplm-dashboard',
-            [$this, 'render_dashboard_page'],
-            'dashicons-admin-network',
-            20
+    public function add_dashboard_widget() {
+        wp_add_dashboard_widget(
+            'wplm_dashboard_widget',
+            __('License Manager Stats', 'wp-license-manager'),
+            [$this, 'render_dashboard_widget']
         );
-        
-        add_submenu_page(
-            'wplm-dashboard',
-            __('Licenses', 'wp-license-manager'),
-            __('Licenses', 'wp-license-manager'),
-            'manage_wplm_licenses',
-            'edit.php?post_type=wplm_license'
-        );
-
-        add_submenu_page(
-            'wplm-dashboard',
-            __('Products', 'wp-license-manager'),
-            __('Products', 'wp-license-manager'),
-            'manage_wplm_products',
-            'edit.php?post_type=wplm_product'
-        );
-        
-        if (class_exists('WooCommerce')) {
-            add_submenu_page(
-                'wplm-dashboard',
-                __('WooCommerce Sync', 'wp-license-manager'),
-                __('WC Sync', 'wp-license-manager'),
-                'manage_wplm_licenses',
-                'wplm-woocommerce-sync',
-                [$this, 'render_woocommerce_sync_page']
-            );
-        }
     }
 
     /**
-     * Add license and product meta boxes.
+     * Render the dashboard widget.
      */
-    public function add_license_product_meta_boxes() {
+    public function render_dashboard_widget() {
+        $total_licenses = wp_count_posts('wplm_license')->publish;
+        
+        // More efficient query for active licenses count
+        $active_licenses_query = new WP_Query([
+            'post_type' => 'wplm_license',
+            'posts_per_page' => 1,
+            'fields' => 'ids', // Only retrieve IDs to make it faster
+            'meta_key' => '_wplm_status',
+            'meta_value' => 'active',
+            'no_found_rows' => false, // We need found_posts for counting
+            'update_post_term_cache' => false,
+            'update_post_meta_cache' => false,
+        ]);
+        $active_licenses = $active_licenses_query->found_posts;
+
+        echo '<p>' . sprintf(__('Total Licenses: %d', 'wp-license-manager'), $total_licenses) . '</p>';
+        echo '<p>' . sprintf(__('Active Licenses: %d', 'wp-license-manager'), $active_licenses) . '</p>';
+    }
+
+    /**
+     * Add meta boxes to CPTs.
+     */
+    public function add_meta_boxes() {
         add_meta_box(
-            'wplm_license_meta',
+            'wplm_license_details',
             __('License Details', 'wp-license-manager'),
             [$this, 'render_license_meta_box'],
             'wplm_license',
@@ -88,15 +91,16 @@ class WPLM_Admin_Manager {
         );
 
         add_meta_box(
-            'wplm_product_meta',
+            'wplm_product_details',
             __('Product Details', 'wp-license-manager'),
             [$this, 'render_product_meta_box'],
             'wplm_product',
             'normal',
             'high'
         );
-        
-        if (class_exists('WooCommerce')) {
+
+        // Add meta box for WooCommerce products if WooCommerce is active
+        if (function_exists('wc_get_products')) {
             add_meta_box(
                 'wplm_woocommerce_license_options',
                 __('License Manager Options', 'wp-license-manager'),
@@ -113,17 +117,51 @@ class WPLM_Admin_Manager {
      */
     public function render_license_meta_box($post) {
         wp_nonce_field('wplm_save_license_meta', 'wplm_nonce');
-        if ($post->ID === 0) {
-            wp_nonce_field('wplm_create_license_nonce', 'wplm_generate_key_nonce');
-        }
+
         $status = get_post_meta($post->ID, '_wplm_status', true);
         $product_id = get_post_meta($post->ID, '_wplm_product_id', true);
         $customer_email = get_post_meta($post->ID, '_wplm_customer_email', true);
         $expiry_date = get_post_meta($post->ID, '_wplm_expiry_date', true);
         $activation_limit = get_post_meta($post->ID, '_wplm_activation_limit', true);
         $activated_domains = get_post_meta($post->ID, '_wplm_activated_domains', true);
-        $product_type = get_post_meta($post->ID, '_wplm_product_type', true);
+        $product_type = get_post_meta($post->ID, '_wplm_product_type', true); // Retrieve stored product type
+
+        // Construct the combined value for comparison in the dropdown
         $current_product_value = !empty($product_id) && !empty($product_type) ? $product_type . '|' . $product_id : '';
+
+        $wplm_products = get_posts([
+            'post_type' => 'wplm_product',
+            'posts_per_page' => -1,
+            'post_status' => 'publish',
+        ]);
+
+        $woocommerce_products = [];
+        if (function_exists('wc_get_products')) {
+            $woocommerce_products = wc_get_products([
+                'limit' => -1,
+                'status' => 'publish',
+                'type' => 'virtual', // Only show virtual products as these are typically digital
+            ]);
+        }
+
+        $all_products = [];
+
+        foreach ($wplm_products as $product) {
+            $prod_id = get_post_meta($product->ID, '_wplm_product_id', true);
+            $all_products[] = [
+                'id' => $prod_id,
+                'title' => '[WPLM] ' . $product->post_title,
+                'type' => 'wplm',
+            ];
+        }
+
+        foreach ($woocommerce_products as $product) {
+            $all_products[] = [
+                'id' => $product->get_id(),
+                'title' => '[WC] ' . $product->get_name(),
+                'type' => 'woocommerce',
+            ];
+        }
         ?>
         <table class="form-table">
             <tbody>
@@ -138,33 +176,17 @@ class WPLM_Admin_Manager {
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="wplm_product_id_select2"><?php _e('Product', 'wp-license-manager'); ?></label></th>
+                    <th><label for="wplm_product_id"><?php _e('Product', 'wp-license-manager'); ?></label></th>
                     <td>
-                        <select name="wplm_product_id" id="wplm_product_id_select2" class="wplm-select2-product-search" data-current-value="<?php echo esc_attr($current_product_value); ?>">
-                            <?php
-                            if (!empty($current_product_value)) {
-                                $parts = explode('|', $current_product_value);
-                                $p_type = $parts[0] ?? '';
-                                $p_id = $parts[1] ?? '';
-                                $product_title = '';
-                                if ($p_type === 'wplm') {
-                                    $wplm_product = get_post($p_id);
-                                    if ($wplm_product) {
-                                        $product_title = '[WPLM] ' . $wplm_product->post_title;
-                                    }
-                                } elseif ($p_type === 'woocommerce' && function_exists('wc_get_product')) {
-                                    $wc_product = wc_get_product($p_id);
-                                    if ($wc_product) {
-                                        $product_title = '[WC] ' . $wc_product->get_name();
-                                    }
-                                }
-                                if (!empty($product_title)) {
-                                    echo '<option value="' . esc_attr($current_product_value) . '" selected="selected">' . esc_html($product_title) . '</option>';
-                                }
-                            }
-                            ?>
+                        <select name="wplm_product_id" id="wplm_product_id">
+                            <option value=""><?php _e('-- Select a Product --', 'wp-license-manager'); ?></option>
+                            <?php foreach ($all_products as $product) : ?>
+                                <option value="<?php echo esc_attr($product['type'] . '|' . $product['id']); ?>" <?php selected($current_product_value, $product['type'] . '|' . $product['id']); ?>>
+                                    <?php echo esc_html($product['title']); ?>
+                                </option>
+                            <?php endforeach; ?>
                         </select>
-                        <p class="description"><?php _e('Search for a product from either WP License Manager or WooCommerce.', 'wp-license-manager'); ?></p>
+                        <p class="description"><?php _e('Select a product from either WP License Manager or WooCommerce.', 'wp-license-manager'); ?></p>
                     </td>
                 </tr>
                 <tr>
@@ -175,52 +197,59 @@ class WPLM_Admin_Manager {
                     <th><label for="wplm_duration_type"><?php _e('License Duration', 'wp-license-manager'); ?></label></th>
                     <td>
                         <?php 
-                        $duration_type = get_post_meta($post->ID, '_wplm_duration_type', true);
-                        $duration_value = get_post_meta($post->ID, '_wplm_duration_value', true);
+                        $duration_type = get_post_meta($post->ID, '_wplm_duration_type', true) ?: 'lifetime';
+                        $duration_value = get_post_meta($post->ID, '_wplm_duration_value', true) ?: 1;
                         ?>
-                        <select name="wplm_duration_type" id="wplm_duration_type">
+                        <select id="wplm_duration_type" name="wplm_duration_type" style="width: 120px;">
                             <option value="lifetime" <?php selected($duration_type, 'lifetime'); ?>><?php _e('Lifetime', 'wp-license-manager'); ?></option>
                             <option value="days" <?php selected($duration_type, 'days'); ?>><?php _e('Days', 'wp-license-manager'); ?></option>
                             <option value="months" <?php selected($duration_type, 'months'); ?>><?php _e('Months', 'wp-license-manager'); ?></option>
                             <option value="years" <?php selected($duration_type, 'years'); ?>><?php _e('Years', 'wp-license-manager'); ?></option>
                         </select>
-                        <input type="number" id="wplm_duration_value" name="wplm_duration_value" value="<?php echo esc_attr($duration_value); ?>" min="1" style="<?php echo ($duration_type === 'lifetime' ? 'display:none;' : ''); ?>" class="small-text" placeholder="<?php _e('e.g., 30', 'wp-license-manager'); ?>">
-                        <p class="description"><?php _e('Set the duration of the license. Leave blank or set to 0 for lifetime.', 'wp-license-manager'); ?></p>
-                    </td>
-                </tr>
-                <tr>
-                    <th><label for="wplm_expiry_date"><?php _e('Expiry Date', 'wp-license-manager'); ?></label></th>
-                    <td>
-                        <input type="text" id="wplm_expiry_date" name="wplm_expiry_date" value="<?php echo esc_attr($expiry_date); ?>" class="wplm-datepicker regular-text" autocomplete="off" />
-                        <p class="description"><?php _e('Format: YYYY-MM-DD. Leave empty for lifetime.', 'wp-license-manager'); ?></p>
+                        <input type="number" id="wplm_duration_value" name="wplm_duration_value" value="<?php echo esc_attr($duration_value); ?>" min="1" style="width: 80px; margin-left: 10px;" />
+                        <p class="description"><?php _e('Select duration type and value. Lifetime means no expiry.', 'wp-license-manager'); ?></p>
+                        <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            const durationTypeSelect = document.getElementById('wplm_duration_type');
+                            const durationValueInput = document.getElementById('wplm_duration_value');
+                            
+                            function toggleDurationValue() {
+                                durationValueInput.style.display = durationTypeSelect.value === 'lifetime' ? 'none' : 'inline-block';
+                            }
+                            
+                            durationTypeSelect.addEventListener('change', toggleDurationValue);
+                            toggleDurationValue(); // Initial state
+                        });
+                        </script>
                     </td>
                 </tr>
                 <tr>
                     <th><label for="wplm_activation_limit"><?php _e('Activation Limit', 'wp-license-manager'); ?></label></th>
-                    <td>
-                        <input type="number" id="wplm_activation_limit" name="wplm_activation_limit" value="<?php echo esc_attr($activation_limit); ?>" min="0" class="small-text" />
-                        <p class="description"><?php _e('Number of times this license can be activated. Set to 0 for unlimited.', 'wp-license-manager'); ?></p>
-                    </td>
+                    <td><input type="number" id="wplm_activation_limit" name="wplm_activation_limit" value="<?php echo esc_attr($activation_limit ?: 1); ?>" class="small-text"></td>
                 </tr>
                 <tr>
                     <th><?php _e('Activated Domains', 'wp-license-manager'); ?></th>
                     <td>
-                        <?php if (!empty($activated_domains) && is_array($activated_domains)) : ?>
-                            <ul class="wplm-activated-domains-list">
-                                <?php foreach ($activated_domains as $domain) : ?>
-                                    <li><?php echo esc_html($domain); ?></li>
-                                <?php endforeach; ?>
-                            </ul>
-                        <?php else : ?>
-                            <p><?php _e('No domains activated yet.', 'wp-license-manager'); ?></p>
-                        <?php endif; ?>
+                        <?php
+                        if (!empty($activated_domains) && is_array($activated_domains)) {
+                            echo '<ul>';
+                            foreach ($activated_domains as $domain) {
+                                echo '<li>' . esc_html($domain) . '</li>';
+                            }
+                            echo '</ul>';
+                        } else {
+                            _e('No domains activated yet.', 'wp-license-manager');
+                        }
+                        ?>
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="wplm_current_version"><?php _e('Current Version (for client update checks)', 'wp-license-manager'); ?></label></th>
+                    <th><?php _e('Generate License', 'wp-license-manager'); ?></th>
                     <td>
-                        <input type="text" id="wplm_current_version" name="wplm_current_version" value="<?php echo esc_attr(get_post_meta($post->ID, '_wplm_current_version', true)); ?>" class="regular-text" placeholder="1.0.0" />
-                        <p class="description"><?php _e('This version string will be sent to the client during update checks. e.g., 1.0.0', 'wp-license-manager'); ?></p>
+                        <button type="button" id="wplm-generate-key" class="button">
+                            <?php _e('Generate Key', 'wp-license-manager'); ?>
+                        </button>
+                        <span id="wplm-generated-key" style="margin-left:1rem; font-weight:bold;"></span>
                     </td>
                 </tr>
             </tbody>
@@ -236,10 +265,8 @@ class WPLM_Admin_Manager {
         $product_id = get_post_meta($post->ID, '_wplm_product_id', true);
         $current_version = get_post_meta($post->ID, '_wplm_current_version', true);
         $download_url = get_post_meta($post->ID, '_wplm_download_url', true);
-        $product_type = get_post_meta($post->ID, '_wplm_product_type', true);
-        $wc_product_id = get_post_meta($post->ID, '_wplm_wc_product_id', true);
 
-        // Get total licenses created for this product
+        // Get total licenses for this product
         $total_licenses_query = new WP_Query([
             'post_type' => 'wplm_license',
             'posts_per_page' => -1,
@@ -254,9 +281,9 @@ class WPLM_Admin_Manager {
         ]);
         $total_licenses = $total_licenses_query->found_posts;
 
-        // Get total activations for this product
-        $total_activations_count = 0;
-        $product_licenses_for_activations = get_posts([
+        // Get active licenses (based on activations) for this product
+        $active_licenses_count = 0;
+        $product_licenses = get_posts([
             'post_type' => 'wplm_license',
             'posts_per_page' => -1,
             'meta_query' => [
@@ -270,100 +297,56 @@ class WPLM_Admin_Manager {
                     'key' => '_wplm_status',
                     'value' => 'active',
                     'compare' => '='
-                ]
+                ],
             ]
         ]);
 
-        foreach ($product_licenses_for_activations as $license_post) {
-            $activated_domains_count = count(get_post_meta($license_post->ID, '_wplm_activated_domains', true) ?: []);
-            $total_activations_count += $activated_domains_count;
+        foreach ($product_licenses as $license) {
+            $activated_domains = get_post_meta($license->ID, '_wplm_activated_domains', true) ?: [];
+            if (!empty($activated_domains) && count($activated_domains) > 0) {
+                $active_licenses_count++;
+            }
         }
-        
-        // WooCommerce product link
+
+        // Get linked WooCommerce product
+        $linked_wc_product_id = get_post_meta($post->ID, '_wplm_wc_product_id', true);
         $wc_product_link = '';
-        $wc_product = null;
-        if (!empty($wc_product_id) && function_exists('wc_get_product')) {
-            $wc_product = wc_get_product($wc_product_id);
+        if (!empty($linked_wc_product_id) && function_exists('wc_get_product')) {
+            $wc_product = wc_get_product($linked_wc_product_id);
             if ($wc_product) {
-                $wc_product_link = get_edit_post_link($wc_product_id);
+                $wc_product_link = get_edit_post_link($wc_product->get_id());
             }
         }
         ?>
         <table class="form-table">
             <tbody>
                 <tr>
-                    <th><label for="wplm_product_id"><?php _e('Product ID (Slug)', 'wp-license-manager'); ?></label></th>
+                    <th><?php _e('License Overview', 'wp-license-manager'); ?></th>
                     <td>
-                        <input type="text" id="wplm_product_id" name="wplm_product_id" value="<?php echo esc_attr($product_id); ?>" class="regular-text" <?php echo ($post->post_status == 'publish' && !empty($product_id)) ? 'readonly' : ''; ?> />
-                        <p class="description"><?php _e('Unique ID for this product. Cannot be changed after publishing. Use alphanumeric characters and hyphens.', 'wp-license-manager'); ?></p>
+                        <p><strong><?php _e('Total Licenses Generated:', 'wp-license-manager'); ?></strong> <?php echo esc_html($total_licenses); ?></p>
+                        <p><strong><?php _e('Currently Activated Licenses:', 'wp-license-manager'); ?></strong> <?php echo esc_html($active_licenses_count); ?></p>
                     </td>
                 </tr>
                 <tr>
-                    <th><label for="wplm_current_version"><?php _e('Current Version', 'wp-license-manager'); ?></label></th>
-                    <td><input type="text" id="wplm_current_version" name="wplm_current_version" value="<?php echo esc_attr($current_version); ?>" class="regular-text" placeholder="1.0.0" /></td>
+                    <th><label for="wplm_product_id"><?php _e('Product ID', 'wp-license-manager'); ?></label></th>
+                    <td><input type="text" id="wplm_product_id" name="wplm_product_id" value="<?php echo esc_attr($product_id ?: $post->post_name); ?>" class="regular-text">
+                    <p class="description"><?php _e('A unique ID for this product (e.g., "my-awesome-plugin"). Used in the API.', 'wp-license-manager'); ?></p></td>
                 </tr>
-                <tr>
-                    <th><label for="wplm_download_url"><?php _e('Download URL', 'wp-license-manager'); ?></label></th>
-                    <td><input type="url" id="wplm_download_url" name="wplm_download_url" value="<?php echo esc_url($download_url); ?>" class="regular-text" placeholder="https://example.com/your-product.zip" /></td>
-                </tr>
-                <tr>
-                    <th><label for="wplm_product_type"><?php _e('Product Type', 'wp-license-manager'); ?></label></th>
-                    <td>
-                        <select name="wplm_product_type" id="wplm_product_type">
-                            <option value="wplm" <?php selected($product_type, 'wplm'); ?>><?php _e('WPLM Native', 'wp-license-manager'); ?></option>
-                            <option value="woocommerce" <?php selected($product_type, 'woocommerce'); ?> <?php echo !class_exists('WooCommerce') ? 'disabled' : ''; ?>><?php _e('WooCommerce Product', 'wp-license-manager'); ?></option>
-                        </select>
-                        <?php if (!class_exists('WooCommerce')) : ?>
-                            <p class="description"><?php _e('Install and activate WooCommerce to link products.', 'wp-license-manager'); ?></p>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-                <tr class="wplm-wc-product-field" style="<?php echo ($product_type === 'woocommerce') ? '' : 'display:none;'; ?>">
-                    <th><label for="wplm_wc_product_id"><?php _e('Link WooCommerce Product', 'wp-license-manager'); ?></label></th>
-                    <td>
-                        <?php if (!empty($wc_product_link) && $wc_product) : ?>
-                            <a href="<?php echo esc_url($wc_product_link); ?>" target="_blank" rel="noopener noreferrer">
-                                <?php echo esc_html($wc_product->get_name()); ?> (#<?php echo esc_html($wc_product_id); ?>)
-                            </a>
-                            <p class="description"><?php _e('WooCommerce product is linked. To change, edit the WooCommerce product directly.', 'wp-license-manager'); ?></p>
-                        <?php else : ?>
-                            <select name="wplm_wc_product_id" id="wplm_wc_product_id" class="wplm-select2-wc-product-search" style="width: 100%;" data-placeholder="<?php _e('Search for a WooCommerce product', 'wp-license-manager'); ?>">
-                                <option value=""></option>
-                                <?php
-                                if (class_exists('WooCommerce') && !empty($wc_product_id)) {
-                                    $selected_wc_product = wc_get_product($wc_product_id);
-                                    if ($selected_wc_product) {
-                                        echo '<option value="' . esc_attr($wc_product_id) . '" selected="selected">' . esc_html($selected_wc_product->get_name()) . ' (#'.esc_html($wc_product_id).')</option>';
-                                    }
-                                }
-                                ?>
-                            </select>
-                            <p class="description"><?php _e('Link this WPLM product to an existing WooCommerce product. Ensure the WooCommerce product is "Virtual".', 'wp-license-manager'); ?></p>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-                <tr>
-                    <th><?php _e('Total Licenses Generated', 'wp-license-manager'); ?></th>
-                    <td><?php echo $total_licenses; ?></td>
-                </tr>
-                <tr>
-                    <th><?php _e('Total Activations', 'wp-license-manager'); ?></th>
-                    <td><?php echo $total_activations_count; ?></td>
-                </tr>
-                <?php if (!empty($wc_product_link) && $wc_product): ?>
+                <?php if (!empty($wc_product_link)): ?>
                 <tr>
                     <th><?php _e('Linked WooCommerce Product', 'wp-license-manager'); ?></th>
                     <td><a href="<?php echo esc_url($wc_product_link); ?>" target="_blank"><?php echo esc_html($wc_product->get_name()); ?></a></td>
                 </tr>
-                <?php else: // If no WooCommerce product is linked, display a message. ?>
-                <tr>
-                    <th><?php _e('Linked WooCommerce Product', 'wp-license-manager'); ?></th>
-                    <td><?php _e('Not linked to any WooCommerce product.', 'wp-license-manager'); ?></td>
-                </tr>
                 <?php endif; ?>
                 <tr>
-                    <th><label for="wplm_notes"><?php _e('Notes', 'wp-license-manager'); ?></label></th>
-                    <td><textarea id="wplm_notes" name="wplm_notes" rows="5" class="large-text"><?php echo esc_textarea(get_post_meta($post->ID, '_wplm_notes', true)); ?></textarea></td>
+                    <th><label for="wplm_current_version"><?php _e('Current Version', 'wp-license-manager'); ?></label></th>
+                    <td><input type="text" id="wplm_current_version" name="wplm_current_version" value="<?php echo esc_attr($current_version); ?>" class="regular-text">
+                    <p class="description"><?php _e('The latest version number for the plugin (e.g., "1.2.3").', 'wp-license-manager'); ?></p></td>
+                </tr>
+                <tr>
+                    <th><label for="wplm_download_url"><?php _e('Download URL', 'wp-license-manager'); ?></label></th>
+                    <td><input type="url" id="wplm_download_url" name="wplm_download_url" value="<?php echo esc_attr($download_url); ?>" class="large-text">
+                    <p class="description"><?php _e('The URL for downloading the latest version of the plugin.', 'wp-license-manager'); ?></p></td>
                 </tr>
             </tbody>
         </table>
@@ -530,18 +513,7 @@ class WPLM_Admin_Manager {
         }
         if (isset($_POST['wplm_download_url'])) {
             update_post_meta($post_id, '_wplm_download_url', esc_url_raw($_POST['wplm_download_url']));
-            if (class_exists('WPLM_Activity_Logger')) {
-                WPLM_Activity_Logger::log(
-                    $post_id,
-                    'product_updated',
-                    sprintf(__('Product %s updated.', 'wp-license-manager'), get_the_title($post_id)),
-                    [
-                        'product_id' => $post_id,
-                        'product_title' => get_the_title($post_id),
-                    ]
-                );
             }
-        }
         }
 
         if (function_exists('wc_get_products') && $is_woocommerce_meta) {
@@ -628,77 +600,87 @@ class WPLM_Admin_Manager {
      * AJAX handler to generate a license key for a license post.
      */
     public function ajax_generate_key() {
-        check_ajax_referer('wplm_create_license_nonce', 'nonce');
-
-        if (!current_user_can('edit_wplm_licenses')) {
-            wp_send_json_error(['message' => __('You do not have sufficient permissions to generate license keys.', 'wp-license-manager')]);
+        if (!isset($_POST['post_id']) || !isset($_POST['nonce'])) {
+            wp_send_json_error(['message' => 'Missing parameters.'], 400);
         }
 
         $post_id = intval($_POST['post_id']);
-        if ($post_id > 0) {
-            check_ajax_referer('wplm_generate_key_' . $post_id, 'nonce');
-        }
+        $nonce = sanitize_text_field($_POST['nonce']);
 
-        $license_key = self::generate_standard_license_key();
+        $is_new_post = ($post_id === 0); // Determine if it's a new post
 
-        if (empty($license_key)) {
-            wp_send_json_error(['message' => __('An error occurred while generating the license key.', 'wp-license-manager')]);
-        }
-
-        if ($post_id === 0) {
-            // Create a new license post with the generated key as the title
-            $new_post_args = [
-                'post_title' => $license_key,
-                'post_status' => 'auto-draft',
-                'post_type' => 'wplm_license',
-            ];
-            $new_post_id = wp_insert_post($new_post_args);
-
-            if (!is_wp_error($new_post_id)) {
-                // Save other meta if available from the form for initial draft
-                if (isset($_POST['product_id'])) update_post_meta($new_post_id, '_wplm_product_id', sanitize_text_field($_POST['product_id']));
-                if (isset($_POST['customer_email'])) update_post_meta($new_post_id, '_wplm_customer_email', sanitize_email($_POST['customer_email']));
-                if (isset($_POST['expiry_date'])) update_post_meta($new_post_id, '_wplm_expiry_date', sanitize_text_field($_POST['expiry_date']));
-                if (isset($_POST['activation_limit'])) update_post_meta($new_post_id, '_wplm_activation_limit', intval($_POST['activation_limit']));
-
-                if (class_exists('WPLM_Activity_Logger')) {
-                    WPLM_Activity_Logger::log(
-                        $new_post_id,
-                        'license_created',
-                        sprintf(__('New license key %s generated.', 'wp-license-manager'), $license_key),
-                        [
-                            'license_key' => $license_key,
-                            'product_id' => $_POST['product_id'] ?? null,
-                            'customer_email' => $_POST['customer_email'] ?? null,
-                        ]
-                    );
-                }
-                wp_send_json_success([
-                    'key' => $license_key,
-                    'redirect_url' => admin_url('post.php?post=' . $new_post_id . '&action=edit')
-                ]);
-            } else {
-                wp_send_json_error(['message' => __('Failed to create new license draft.', 'wp-license-manager') . ' ' . $new_post_id->get_error_message()]);
+        if ($is_new_post) {
+            // For new posts, verify the generic create license nonce and capability
+            error_log('WPLM Debug: Attempting new license generation. Post ID: ' . $post_id . ', Nonce: ' . $nonce . ', Expected Nonce: ' . wp_create_nonce('wplm_create_license_nonce'));
+            if (!wp_verify_nonce($nonce, 'wplm_create_license_nonce')) {
+                error_log('WPLM Error: Invalid nonce for new license. Sent: ' . $nonce . ', Expected: ' . wp_create_nonce('wplm_create_license_nonce'));
+                wp_send_json_error(['message' => 'Invalid nonce for new license.'], 403);
+            }
+            if (!current_user_can('create_wplm_licenses')) {
+                error_log('WPLM Error: Permission denied to create licenses for user ' . get_current_user_id());
+                wp_send_json_error(['message' => 'Permission denied to create licenses.'], 403);
             }
         } else {
-            // For existing posts, just update the title
-            wp_update_post([
-                'ID' => $post_id,
-                'post_title' => $license_key,
-            ]);
-
-            if (class_exists('WPLM_Activity_Logger')) {
-                WPLM_Activity_Logger::log(
-                    $post_id,
-                    'license_updated',
-                    sprintf(__('License key updated to %s.', 'wp-license-manager'), $license_key),
-                    [
-                        'license_key' => $license_key,
-                    ]
-                );
+            // For existing posts, verify the post-specific nonce and edit capability
+            error_log('WPLM Debug: Attempting existing license update. Post ID: ' . $post_id . ', Nonce: ' . $nonce . ', Expected Nonce: ' . wp_create_nonce('wplm_generate_key_' . $post_id));
+        if (!wp_verify_nonce($nonce, 'wplm_generate_key_' . $post_id)) {
+                error_log('WPLM Error: Invalid nonce for existing license. Sent: ' . $nonce . ', Expected: ' . wp_create_nonce('wplm_generate_key_' . $post_id));
+                wp_send_json_error(['message' => 'Invalid nonce for existing license.'], 403);
             }
-            wp_send_json_success(['key' => $license_key]);
+            if (!current_user_can('edit_wplm_license', $post_id)) {
+                error_log('WPLM Error: Permission denied to edit license ' . $post_id . ' for user ' . get_current_user_id());
+                wp_send_json_error(['message' => 'Permission denied to edit license.'], 403);
+            }
         }
+
+        // Generate a new license key
+        $new_license_key = $this->generate_standard_license_key();
+
+        // Ensure uniqueness for the new key
+        $attempts = 0;
+        while ($attempts < 5) {
+            $existing_license = new WP_Query([
+                'post_type'      => 'wplm_license',
+                'posts_per_page' => 1,
+                'title'          => $new_license_key,
+                'fields'         => 'ids',
+                'exact'          => true,
+            ]);
+            if (!$existing_license->have_posts()) {
+                break;
+            }
+            $attempts++;
+            $new_license_key = $this->generate_standard_license_key();
+        }
+
+        if ($attempts === 5) {
+            error_log('WPLM Error: Failed to generate a unique license key after multiple attempts in ajax_generate_key.');
+            wp_send_json_error(['message' => __('Failed to generate a unique license key.', 'wp-license-manager')], 500);
+        }
+
+        if ($is_new_post) {
+            // Create a new post with the generated key as title
+            $new_post_args = [
+                'post_title'  => $new_license_key,
+                'post_type'   => 'wplm_license',
+                'post_status' => 'publish',
+            ];
+            $new_post_id = wp_insert_post($new_post_args, true);
+
+            if (is_wp_error($new_post_id)) {
+                error_log('WPLM Error: Failed to create new license post: ' . $new_post_id->get_error_message());
+                wp_send_json_error(['message' => 'Failed to create new license post: ' . $new_post_id->get_error_message()], 500);
+            }
+            $post_id = $new_post_id; // Use the new post ID for response
+        } else {
+            // Update the existing post title with the generated key
+            wp_update_post([
+                'ID'         => $post_id,
+                'post_title' => $new_license_key,
+            ]);
+        }
+
+        wp_send_json_success(['license_key' => $new_license_key, 'post_id' => $post_id]);
     }
 
     /**
@@ -810,7 +792,7 @@ class WPLM_Admin_Manager {
                 $woocommerce_products = wc_get_products([
                     'limit' => -1,
                     'status' => 'publish',
-                    'type' => 'virtual', // Only show virtual products as these are typically digital
+                    'type' => 'virtual',
                 ]);
                 foreach ($woocommerce_products as $product) {
                     $this->products_map['woocommerce|' . $product->get_id()] = '[WC] ' . $product->get_name();
@@ -1037,50 +1019,69 @@ class WPLM_Admin_Manager {
             }
             
             // Enqueue admin script
-            wp_enqueue_script('wplm-admin-script', plugin_dir_url(__FILE__) . '../assets/js/admin-script.js', ['jquery'], WPLM_VERSION, true);
+            wp_enqueue_script('wplm-admin-script', plugin_dir_url(__FILE__) . '../assets/js/admin-script.js', ['jquery', 'wp-i18n'], WPLM_VERSION, true);
+            wp_localize_script('wplm-admin-script', 'wplm_admin_vars', [
+                'ajaxurl' => admin_url('admin-ajax.php'),
+                'nonce' => wp_create_nonce('wplm_admin_nonce'),
+                'loading_text' => __('Loading...', 'wp-license-manager'),
+                'error_loading_text' => __('Error loading details.', 'wp-license-manager'),
+                'active_text' => __('Active', 'wp-license-manager'),
+                'inactive_text' => __('Inactive', 'wp-license-manager'),
+                'expired_text' => __('Expired', 'wp-license-manager'),
+                // Customer Details Modal Specific
+                'wc_customer_text' => __('WC Customer', 'wp-license-manager'),
+                'total_licenses_text' => __('Total Licenses', 'wp-license-manager'),
+                'total_value_text' => __('Total Value', 'wp-license-manager'),
+                'registered_on_text' => __('Registered On', 'wp-license-manager'),
+                'licenses_text' => __('Licenses', 'wp-license-manager'),
+                'license_key_text' => __('License Key', 'wp-license-manager'),
+                'product_text' => __('Product', 'wp-license-manager'),
+                'status_text' => __('Status', 'wp-license-manager'),
+                'expiry_text' => __('Expiry', 'wp-license-manager'),
+                'activations_text' => __('Activations', 'wp-license-manager'),
+                'no_licenses_text' => __('No licenses found for this customer.', 'wp-license-manager'),
+                'generate_key_post_id' => isset($_GET['post']) ? absint($_GET['post']) : 0,
+                'create_license_nonce' => wp_create_nonce('wplm_generate_license_key'),
+                'post_edit_nonce' => wp_create_nonce('update-post_' . (isset($_GET['post']) ? absint($_GET['post']) : 0)),
+                'edit_post_url' => admin_url('post.php'),
+                'generating_text' => __('Generating...', 'wp-license-manager'),
+                'generate_api_key_nonce' => wp_create_nonce('wplm_generate_api_key'),
+                // Bulk Operations Strings
+                'confirm_operation' => __('Are you sure you want to perform this bulk operation?', 'wp-license-manager'),
+                'processing' => __('Processing...', 'wp-license-manager'),
+                'error' => __('An unexpected error occurred.', 'wp-license-manager'),
+                'select_licenses' => __('Please select at least one license to perform this action.', 'wp-license-manager'),
+                'invalid_extension_value' => __('Please enter a valid positive number for extension.', 'wp-license-manager'),
+                'invalid_expiry_date' => __('Please enter a valid expiry date.', 'wp-license-manager'),
+                'invalid_activation_limit' => __('Please enter a valid non-negative number for activation limit.', 'wp-license-manager'),
+                'select_new_product' => __('Please select a new product.', 'wp-license-manager'),
+                'select_new_customer' => __('Please select a new customer.', 'wp-license-manager'),
+                // Bulk Update Tab Strings
+                'preview_changes' => __('Preview Changes', 'wp-license-manager'),
+                'licenses_to_be_updated' => __('Licenses to be updated', 'wp-license-manager'),
+                'changes_to_be_applied' => __('The following changes will be applied', 'wp-license-manager'),
+                'status_change_to' => __('Status changed to', 'wp-license-manager'),
+                'activation_limit_change_to' => __('Activation Limit changed to', 'wp-license-manager'),
+                'extend_expiry_by' => __('Extend Expiry by', 'wp-license-manager'),
+                'affected_licenses' => __('Affected Licenses', 'wp-license-manager'),
+                'no_licenses_match_criteria' => __('No licenses match the specified criteria.', 'wp-license-manager'),
+                'error_loading_preview' => __('Error loading preview.', 'wp-license-manager'),
+                'confirm_apply_updates' => __('Apply bulk updates to the selected licenses?', 'wp-license-manager'),
+                'updating_text' => __('Updating...', 'wp-license-manager'),
+                'apply_updates_text' => __('Apply Updates', 'wp-license-manager'),
+                'success_text' => __('Success', 'wp-license-manager'),
+                'error_text' => __('Error', 'wp-license-manager'),
+                'error_applying_updates' => __('Error applying updates.', 'wp-license-manager'),
+                // Activity Log Strings
+                'filtering_text' => __('Filtering...', 'wp-license-manager'),
+                'filter_failed_text' => __('Filter failed', 'wp-license-manager'),
+                'filter_error_text' => __('Filter error occurred', 'wp-license-manager'),
+                'confirm_clear_log_text' => __('Are you sure you want to clear the activity log? This action cannot be undone.', 'wp-license-manager'),
+            ]);
 
-            wp_localize_script(
-                'wplm-admin-script',
-                'wplm_admin_vars',
-                [
-                    'ajaxurl' => admin_url('admin-ajax.php'),
-                    'generate_api_key_nonce' => wp_create_nonce('wplm_generate_api_key_nonce'),
-                    'export_licenses_nonce' => wp_create_nonce('wplm_export_licenses_nonce'),
-                    'generate_key_nonce_prefix' => 'wplm_generate_key_', // For license generation
-                    // Correctly set post ID for new license creation or use existing post ID
-                    'generate_key_post_id' => (isset($GLOBALS['pagenow']) && $GLOBALS['pagenow'] === 'post-new.php' && isset($_GET['post_type']) && $_GET['post_type'] === 'wplm_license') ? 0 : get_the_ID(),
-                    'wplm_save_license_meta_nonce' => wp_create_nonce('wplm_save_license_meta'), // For license meta box
-                    'wplm_save_woocommerce_license_meta_nonce' => wp_create_nonce('wplm_save_woocommerce_license_meta'), // For WooCommerce meta box
-                    'wplm_customer_deactivate_license_nonce' => wp_create_nonce('wplm_customer_deactivate_license'), // For customer dashboard deactivation
-                    'wplm_create_license_nonce' => wp_create_nonce('wplm_create_license_nonce'), // For new license creation (generic nonce)
-                    'add_customer_nonce' => wp_create_nonce('wplm_create_customer_nonce'), // For adding new customers
-                    'search_users_nonce' => wp_create_nonce('wplm_search_users_nonce'), // For searching WordPress users
-                    'admin_url' => admin_url(), // Pass admin URL for redirection
-                    // Customer modal strings
-                    'add_new_customer' => __('Add New Customer', 'wp-license-manager'),
-                    'link_wordpress_user' => __('Link to WordPress User', 'wp-license-manager'),
-                    'search_wordpress_user' => __('Search for a WordPress user', 'wp-license-manager'),
-                    'link_wordpress_user_desc' => __('Optionally link this customer to an existing WordPress user.', 'wp-license-manager'),
-                    'first_name' => __('First Name', 'wp-license-manager'),
-                    'last_name' => __('Last Name', 'wp-license-manager'),
-                    'email' => __('Email', 'wp-license-manager'),
-                    'company' => __('Company', 'wp-license-manager'),
-                    'phone' => __('Phone', 'wp-license-manager'),
-                    'address' => __('Address', 'wp-license-manager'),
-                    'city' => __('City', 'wp-license-manager'),
-                    'state' => __('State/Province', 'wp-license-manager'),
-                    'zip_postal_code' => __('Zip/Postal Code', 'wp-license-manager'),
-                    'country' => __('Country', 'wp-license-manager'),
-                    'social_media_links' => __('Social Media Links', 'wp-license-manager'),
-                    'social_media_desc' => __('Enter one link per line.', 'wp-license-manager'),
-                    'add_customer' => __('Add Customer', 'wp-license-manager'),
-                    'cancel' => __('Cancel', 'wp-license-manager'),
-                    'loading' => __('Loading...', 'wp-license-manager'),
-                    'product_search_placeholder' => __('Search for a WPLM product', 'wp-license-manager'), // Placeholder for WPLM product search
-                    'wc_product_search_placeholder' => __('Search for a WooCommerce product', 'wp-license-manager'), // Placeholder for WooCommerce product search
-                    'wc_product_search_nonce' => wp_create_nonce('wplm_search_woocommerce_products_nonce'), // Nonce for WooCommerce product search
-                ]
-            );
+            if (is_rtl()) {
+                wp_enqueue_style('wplm-admin-style-rtl', plugin_dir_url(__FILE__) . '../assets/css/admin-style-rtl.css', ['wplm-admin-style'], WPLM_VERSION);
+            }
         }
     }
 
@@ -1088,32 +1089,25 @@ class WPLM_Admin_Manager {
      * Render the main settings page.
      */
     public function render_main_settings_page() {
-        if (!current_user_can('manage_options')) {
-            wp_die(__('You do not have sufficient permissions to access this page.', 'wp-license-manager'));
-        }
+        $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general';
         ?>
-        <div class="wrap">
+        <div class="wrap wplm-settings-page">
             <h1><?php _e('WP License Manager Settings', 'wp-license-manager'); ?></h1>
             <div id="wplm-api-key-notice" class="notice" style="display:none;"></div>
-            <?php settings_errors(); ?>
-
-            <?php
-            $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general';
-            ?>
             <h2 class="nav-tab-wrapper">
-                <a href="?page=wplm-settings&tab=general" class="nav-tab <?php echo $active_tab == 'general' ? 'nav-tab-active' : ''; ?>">
+                <a href="?post_type=wplm_license&page=wplm-settings&tab=general" class="nav-tab <?php echo $active_tab == 'general' ? 'nav-tab-active' : ''; ?>">
                     <?php _e('General', 'wp-license-manager'); ?>
                 </a>
-                <a href="?page=wplm-settings&tab=export_import" class="nav-tab <?php echo $active_tab == 'export_import' ? 'nav-tab-active' : ''; ?>">
+                <a href="?post_type=wplm_license&page=wplm-settings&tab=export_import" class="nav-tab <?php echo $active_tab == 'export_import' ? 'nav-tab-active' : ''; ?>">
                     <?php _e('Export/Import', 'wp-license-manager'); ?>
                 </a>
-                <a href="?page=wplm-settings&tab=plugin_manager" class="nav-tab <?php echo $active_tab == 'plugin_manager' ? 'nav-tab-active' : ''; ?>">
+                <a href="?post_type=wplm_license&page=wplm-settings&tab=plugin_manager" class="nav-tab <?php echo $active_tab == 'plugin_manager' ? 'nav-tab-active' : ''; ?>">
                     <?php _e('Plugin Manager', 'wp-license-manager'); ?>
                 </a>
-                <a href="?page=wplm-settings&tab=api_key" class="nav-tab <?php echo $active_tab == 'api_key' ? 'nav-tab-active' : ''; ?>">
+                <a href="?post_type=wplm_license&page=wplm-settings&tab=api_key" class="nav-tab <?php echo $active_tab == 'api_key' ? 'nav-tab-active' : ''; ?>">
                     <?php _e('API Key', 'wp-license-manager'); ?>
                 </a>
-                <a href="?page=wplm-settings&tab=license" class="nav-tab <?php echo $active_tab == 'license' ? 'nav-tab-active' : ''; ?>">
+                <a href="?post_type=wplm_license&page=wplm-settings&tab=license" class="nav-tab <?php echo $active_tab == 'license' ? 'nav-tab-active' : ''; ?>">
                     <?php _e('License', 'wp-license-manager'); ?>
                 </a>
             </h2>
@@ -1750,7 +1744,7 @@ class WPLM_Admin_Manager {
                     $wc_product = wc_get_product($product_id_slug);
                     if ($wc_product) {
                         update_post_meta($product_id_slug, '_wplm_wc_is_licensed_product', $wc_is_licensed);
-                        update_post_meta($product_id_slug, '_wplm_wc_current_version', $wc_current_version);
+                        update_post_meta($product_id_slug, '_wplm_wc_current_version', $current_version);
                         update_post_meta($product_id_slug, '_wplm_wc_linked_wplm_product_id', $wc_linked_product);
                         $updated_count['wc_products']++;
                     } else {
@@ -2106,170 +2100,54 @@ class WPLM_Admin_Manager {
      * Render the enhanced dashboard page
      */
     public function render_dashboard_page() {
-        ?>
-        <div class="wplm-dashboard-wrap">
-            <h1><?php _e('WP License Manager Dashboard', 'wp-license-manager'); ?></h1>
-            <p><?php _e('Welcome to the WP License Manager dashboard. Here you can find an overview of your licenses, products, and recent activities.', 'wp-license-manager'); ?></p>
-
-            <div class="wplm-dashboard-grid">
-                <div class="wplm-dashboard-card">
-                    <h3><?php _e('Total Licenses', 'wp-license-manager'); ?></h3>
-                    <p class="wplm-dashboard-stat"><?php echo WPLM_License_Manager::get_total_licenses_count(); ?></p>
-                </div>
-                <div class="wplm-dashboard-card">
-                    <h3><?php _e('Active Licenses', 'wp-license-manager'); ?></h3>
-                    <p class="wplm-dashboard-stat"><?php echo WPLM_License_Manager::get_active_licenses_count(); ?></p>
-                </div>
-                <div class="wplm-dashboard-card">
-                    <h3><?php _e('Total Products', 'wp-license-manager'); ?></h3>
-                    <p class="wplm-dashboard-stat"><?php echo WPLM_Product_Manager::get_total_products_count(); ?></p>
-                </div>
-                <div class="wplm-dashboard-card">
-                    <h3><?php _e('Total Customers', 'wp-license-manager'); ?></h3>
-                    <p class="wplm-dashboard-stat"><?php echo WPLM_Customer_Management_System::get_total_customers_count(); ?></p>
-                </div>
-            </div>
-
-            <div class="wplm-dashboard-activity-log">
-                <h2><?php _e('Recent Activity', 'wp-license-manager'); ?></h2>
-                <?php $recent_activities = WPLM_Activity_Logger::get_global_log(5); ?>
-                <?php if (!empty($recent_activities)) : ?>
-                    <ul>
-                        <?php foreach ($recent_activities as $activity) : ?>
-                            <li>
-                                <strong><?php echo esc_html($activity['timestamp']); ?>:</strong>
-                                <?php echo esc_html($activity['message']); ?>
-                                <?php if (!empty($activity['object_type']) && !empty($activity['object_id'])) : ?>
-                                    (<?php echo esc_html(ucfirst(str_replace('wplm_', '', $activity['object_type']))); ?> ID: <?php echo esc_html($activity['object_id']); ?>)
-                                <?php endif; ?>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                <?php else : ?>
-                    <p><?php _e('No recent activity.', 'wp-license-manager'); ?></p>
-                <?php endif; ?>
-            </div>
-        </div>
-        <?php
-    }
-
-    /**
-     * Render the WooCommerce Sync page.
-     */
-    public function render_woocommerce_sync_page() {
-        if (!current_user_can('manage_woocommerce')) {
-            wp_die(__('You do not have sufficient permissions to access this page.', 'wp-license-manager'));
-        }
-        ?>
-        <div class="wrap">
-            <h1><?php _e('Generate Licenses from WooCommerce Orders', 'wp-license-manager'); ?></h1>
-            <p><?php _e('Scan your WooCommerce orders to automatically generate licenses for purchased licensed products.', 'wp-license-manager'); ?></p>
-
-            <div id="wplm-wc-scan-orders-status">
-                <p><strong><?php _e('Status:', 'wp-license-manager'); ?></strong> <span id="wplm-wc-scan-message"><?php _e('Ready to scan.', 'wp-license-manager'); ?></span></p>
-                <p><?php _e('Last scanned:', 'wp-license-manager'); ?> <span id="wplm-wc-last-scan-time"><?php echo get_option('wplm_last_wc_scan_time', __('Never', 'wp-license-manager')); ?></span></p>
-            </div>
-
-            <button type="button" class="button button-primary" id="wplm-scan-wc-orders-button">
-                <?php _e('Scan Orders', 'wp-license-manager'); ?>
-            </button>
-
-            <div id="wplm-wc-scan-results" style="margin-top: 20px;">
-                <!-- Results will be displayed here -->
-            </div>
-        </div>
-
-        <script type="text/javascript">
-            jQuery(document).ready(function($) {
-                $('#wplm-scan-wc-orders-button').on('click', function() {
-                    var button = $(this);
-                    var messageSpan = $('#wplm-wc-scan-message');
-                    var resultsDiv = $('#wplm-wc-scan-results');
-
-                    button.prop('disabled', true).text('<?php _e('Scanning...', 'wp-license-manager'); ?>');
-                    messageSpan.text('<?php _e('Scanning in progress...', 'wp-license-manager'); ?>');
-                    resultsDiv.empty(); // Clear previous results
-
-                    $.ajax({
-                        url: ajaxurl,
-                        type: 'POST',
-                        data: {
-                            action: 'wplm_scan_orders',
-                            _wpnonce: '<?php echo wp_create_nonce('wplm_scan_orders_nonce'); ?>'
-                        },
-                        success: function(response) {
-                            if (response.success) {
-                                messageSpan.text('<?php _e('Scan complete!', 'wp-license-manager'); ?>');
-                                resultsDiv.html('<div class="notice notice-success"><p>' + response.data.message + '</p></div>');
-                                $('#wplm-wc-last-scan-time').text(response.data.last_scan_time);
-                            } else {
-                                messageSpan.text('<?php _e('Scan failed!', 'wp-license-manager'); ?>');
-                                resultsDiv.html('<div class="notice notice-error"><p>' + response.data.message + '</p></div>');
-                            }
-                        },
-                        error: function() {
-                            messageSpan.text('<?php _e('An unknown error occurred.', 'wp-license-manager'); ?>');
-                            resultsDiv.html('<div class="notice notice-error"><p><?php _e('An unknown error occurred during the scan.', 'wp-license-manager'); ?></p></div>');
-                        },
-                        complete: function() {
-                            button.prop('disabled', false).text('<?php _e('Scan Orders', 'wp-license-manager'); ?>');
-                        }
-                    });
-                });
-            });
-        </script>
-        <?php
+        // Enqueue Chart.js for dashboard charts
+        wp_enqueue_script('chartjs', 'https://cdn.jsdelivr.net/npm/chart.js', [], '3.9.1', true);
+        
+        // Include the modern dashboard template
+        include WPLM_PLUGIN_DIR . 'templates/admin/dashboard.php';
     }
 
     /**
      * Get dashboard statistics
      */
     public function get_dashboard_stats() {
+        global $wpdb;
+
         // Total licenses
         $total_licenses = wp_count_posts('wplm_license')->publish;
-        
-        // Active licenses
-        $active_licenses_query = new WP_Query([
-            'post_type' => 'wplm_license',
-            'posts_per_page' => 1,
-            'fields' => 'ids',
-            'meta_key' => '_wplm_status',
-            'meta_value' => 'active',
-            'no_found_rows' => false,
-            'update_post_term_cache' => false,
-            'update_post_meta_cache' => false,
-        ]);
-        $active_licenses = $active_licenses_query->found_posts;
-        
-        // Inactive licenses
-        $inactive_licenses_query = new WP_Query([
-            'post_type' => 'wplm_license',
-            'posts_per_page' => 1,
-            'fields' => 'ids',
-            'meta_key' => '_wplm_status',
-            'meta_value' => 'inactive',
-            'no_found_rows' => false,
-            'update_post_term_cache' => false,
-            'update_post_meta_cache' => false,
-        ]);
-        $inactive_licenses = $inactive_licenses_query->found_posts;
-        
-        // Expired licenses
-        $expired_licenses_query = new WP_Query([
-            'post_type' => 'wplm_license',
-            'posts_per_page' => 1,
-            'fields' => 'ids',
-            'meta_key' => '_wplm_status',
-            'meta_value' => 'expired',
-            'no_found_rows' => false,
-            'update_post_term_cache' => false,
-            'update_post_meta_cache' => false,
-        ]);
-        $expired_licenses = $expired_licenses_query->found_posts;
-        
+
+        // Active, Inactive, Expired, Revoked licenses using a single query
+        $license_statuses = $wpdb->get_results(
+            "SELECT pm.meta_value as status, COUNT(p.ID) as count
+             FROM {$wpdb->posts} p
+             INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+             WHERE p.post_type = 'wplm_license'
+             AND p.post_status = 'publish'
+             AND pm.meta_key = '_wplm_license_status'
+             GROUP BY pm.meta_value",
+            ARRAY_A
+        );
+
+        $active_licenses = 0;
+        $inactive_licenses = 0;
+        $expired_licenses = 0;
+        $revoked_licenses = 0;
+
+        foreach ($license_statuses as $status_data) {
+            if ($status_data['status'] === 'active') {
+                $active_licenses = $status_data['count'];
+            } elseif ($status_data['status'] === 'inactive') {
+                $inactive_licenses = $status_data['count'];
+            } elseif ($status_data['status'] === 'expired') {
+                $expired_licenses = $status_data['count'];
+            } elseif ($status_data['status'] === 'revoked') {
+                $revoked_licenses = $status_data['count'];
+            }
+        }
+
         // Total products
         $total_products = wp_count_posts('wplm_product')->publish;
-        
+
         // WooCommerce products with license integration
         $wc_products = 0;
         if (function_exists('wc_get_products')) {
@@ -2282,199 +2160,37 @@ class WPLM_Admin_Manager {
             ]);
             $wc_products = count($licensed_wc_products);
         }
-        
-        // Unique customers
-        $customer_emails = [];
-        $licenses_with_emails = get_posts([
-            'post_type' => 'wplm_license',
-            'posts_per_page' => -1,
-            'meta_key' => '_wplm_customer_email',
-            'fields' => 'ids'
-        ]);
-        
-        foreach ($licenses_with_emails as $license_id) {
-            $email = get_post_meta($license_id, '_wplm_customer_email', true);
-            if (!empty($email)) {
-                $customer_emails[$email] = true;
-            }
-        }
-        $total_customers = count($customer_emails);
-        
-        // New customers this month
+
+        // Unique customers - optimized
+        $customer_emails_query = $wpdb->get_col(
+            "SELECT DISTINCT meta_value FROM {$wpdb->postmeta}
+             WHERE meta_key = '_wplm_customer_email' AND meta_value != ''"
+        );
+        $total_customers = count($customer_emails_query);
+
+        // New customers this month - optimized
         $current_month_start = date('Y-m-01 00:00:00');
-        $new_customers_month_query = new WP_Query([
-            'post_type' => 'wplm_license',
-            'posts_per_page' => -1,
-            'date_query' => [
-                'after' => $current_month_start
-            ],
-            'fields' => 'ids'
-        ]);
-        
-        $new_emails_month = [];
-        foreach ($new_customers_month_query->posts as $license_id) {
-            $email = get_post_meta($license_id, '_wplm_customer_email', true);
-            if (!empty($email)) {
-                $new_emails_month[$email] = true;
-            }
-        }
-        $new_customers_month = count($new_emails_month);
-        
-        // Monthly revenue (if WooCommerce is available)
-        $monthly_revenue = 0;
-        $revenue_growth = 0;
-        
-        if (function_exists('wc_get_orders')) {
-            $current_month_orders = wc_get_orders([
-                'status' => 'completed',
-                'date_created' => '>=' . strtotime($current_month_start),
-                'limit' => -1,
-            ]);
-            
-            foreach ($current_month_orders as $order) {
-                foreach ($order->get_items() as $item) {
-                    $license_key = wc_get_order_item_meta($item->get_id(), '_wplm_license_key', true);
-                    if (!empty($license_key)) {
-                        $monthly_revenue += $item->get_total();
-                    }
-                }
-            }
-            
-            // Previous month for comparison
-            $previous_month_start = date('Y-m-01 00:00:00', strtotime('-1 month'));
-            $previous_month_end = date('Y-m-t 23:59:59', strtotime('-1 month'));
-            
-            $previous_month_orders = wc_get_orders([
-                'status' => 'completed',
-                'date_created' => '>=' . strtotime($previous_month_start),
-                'date_created' => '<=' . strtotime($previous_month_end),
-                'limit' => -1,
-            ]);
-            
-            $previous_revenue = 0;
-            foreach ($previous_month_orders as $order) {
-                foreach ($order->get_items() as $item) {
-                    $license_key = wc_get_order_item_meta($item->get_id(), '_wplm_license_key', true);
-                    if (!empty($license_key)) {
-                        $previous_revenue += $item->get_total();
-                    }
-                }
-            }
-            
-            if ($previous_revenue > 0) {
-                $revenue_growth = (($monthly_revenue - $previous_revenue) / $previous_revenue) * 100;
-            }
-        }
-        
-        // Recent activity
-        $recent_activity = [];
-        if (class_exists('WPLM_Activity_Logger')) {
-            $activity_query = new WP_Query([
-                'post_type' => 'wplm_activity_log',
-                'posts_per_page' => 10,
-                'orderby' => 'date',
-                'order' => 'DESC',
-                'fields' => 'ids'
-            ]);
-            
-            foreach ($activity_query->posts as $activity_id) {
-                $activity_post = get_post($activity_id);
-                $action_type = get_post_meta($activity_id, '_wplm_action_type', true);
-                
-                $icon = 'admin-network';
-                switch ($action_type) {
-                    case 'license_created':
-                        $icon = 'plus-alt';
-                        break;
-                    case 'license_activated':
-                        $icon = 'yes';
-                        break;
-                    case 'license_deactivated':
-                        $icon = 'no';
-                        break;
-                    case 'license_expired':
-                        $icon = 'clock';
-                        break;
-                    case 'product_created':
-                        $icon = 'products';
-                        break;
-                    default:
-                        $icon = 'admin-network';
-                }
-                
-                $recent_activity[] = [
-                    'message' => $activity_post->post_content,
-                    'date' => $activity_post->post_date,
-                    'icon' => $icon
-                ];
-            }
-        }
-        
-        // Expiring licenses
-        $expiring_licenses = [];
-        $expiring_query = new WP_Query([
-            'post_type' => 'wplm_license',
-            'posts_per_page' => 10,
-            'meta_query' => [
-                'relation' => 'AND',
-                [
-                    'key' => '_wplm_status',
-                    'value' => 'active',
-                    'compare' => '='
-                ],
-                [
-                    'key' => '_wplm_expiry_date',
-                    'value' => '',
-                    'compare' => '!='
-                ],
-                [
-                    'key' => '_wplm_expiry_date',
-                    'value' => date('Y-m-d', strtotime('+30 days')),
-                    'compare' => '<=',
-                    'type' => 'DATE'
-                ]
-            ],
-            'orderby' => 'meta_value',
-            'meta_key' => '_wplm_expiry_date',
-            'order' => 'ASC'
-        ]);
-        
-        foreach ($expiring_query->posts as $license) {
-            $product_id = get_post_meta($license->ID, '_wplm_product_id', true);
-            $product_name = $product_id;
-            
-            // Try to get product name
-            $product_post = get_posts([
-                'post_type' => 'wplm_product',
-                'meta_key' => '_wplm_product_id',
-                'meta_value' => $product_id,
-                'posts_per_page' => 1
-            ]);
-            
-            if (!empty($product_post)) {
-                $product_name = $product_post[0]->post_title;
-            }
-            
-            $expiring_licenses[] = [
-                'key' => $license->post_title,
-                'product' => $product_name,
-                'expiry_date' => get_post_meta($license->ID, '_wplm_expiry_date', true)
-            ];
-        }
-        
+        $new_customers_month_query = $wpdb->get_col($wpdb->prepare(
+            "SELECT DISTINCT pm.meta_value FROM {$wpdb->postmeta} pm
+             INNER JOIN {$wpdb->posts} p ON pm.post_id = p.ID
+             WHERE pm.meta_key = '_wplm_customer_email' AND pm.meta_value != ''
+             AND p.post_type = 'wplm_license'
+             AND p.post_status = 'publish'
+             AND p.post_date >= %s",
+            $current_month_start
+        ));
+        $new_customers_this_month = count($new_customers_month_query);
+
         return [
             'total_licenses' => $total_licenses,
             'active_licenses' => $active_licenses,
             'inactive_licenses' => $inactive_licenses,
             'expired_licenses' => $expired_licenses,
+            'revoked_licenses' => $revoked_licenses,
             'total_products' => $total_products,
             'wc_products' => $wc_products,
             'total_customers' => $total_customers,
-            'new_customers_month' => $new_customers_month,
-            'monthly_revenue' => $monthly_revenue,
-            'revenue_growth' => $revenue_growth,
-            'recent_activity' => $recent_activity,
-            'expiring_licenses' => $expiring_licenses
+            'new_customers_this_month' => $new_customers_this_month,
         ];
     }
     
@@ -2483,27 +2199,198 @@ class WPLM_Admin_Manager {
      */
     public function render_subscriptions_page() {
         ?>
-        <div class="wrap">
-            <h1><?php _e('Subscription Management', 'wp-license-manager'); ?></h1>
+        <div class="wrap wplm-subscriptions-wrap">
+            <h1 class="wp-heading-inline"><?php _e('Subscription Management', 'wp-license-manager'); ?></h1>
+            <div class="wplm-admin-notices"></div> <!-- Unified notification area -->
             
             <?php if (!class_exists('WCS_Subscription')): ?>
                 <div class="notice notice-warning">
                     <p><?php _e('WooCommerce Subscriptions plugin is not active. Some features may be limited.', 'wp-license-manager'); ?></p>
                 </div>
-            <?php endif; ?>
-            
-            <div class="wplm-subscriptions-content">
-                <div class="wplm-subscription-stats">
-                    <h2><?php _e('Subscription Overview', 'wp-license-manager'); ?></h2>
+            <?php else: ?>
+                <div class="wplm-subscription-stats-grid">
                     <?php $this->render_subscription_stats(); ?>
                 </div>
-                
-                <div class="wplm-subscription-list">
-                    <h2><?php _e('Recent Subscriptions', 'wp-license-manager'); ?></h2>
-                    <?php $this->render_subscription_list(); ?>
+
+                <div class="wplm-subscription-filters">
+                    <select id="wplm-subscription-status-filter">
+                        <option value=""><?php _e('All Statuses', 'wp-license-manager'); ?></option>
+                        <option value="active"><?php _e('Active', 'wp-license-manager'); ?></option>
+                        <option value="pending"><?php _e('Pending', 'wp-license-manager'); ?></option>
+                        <option value="on-hold"><?php _e('On Hold', 'wp-license-manager'); ?></option>
+                        <option value="cancelled"><?php _e('Cancelled', 'wp-license-manager'); ?></option>
+                        <option value="expired"><?php _e('Expired', 'wp-license-manager'); ?></option>
+                    </select>
+                    <input type="search" id="wplm-subscription-search" placeholder="<?php _e('Search subscriptions...', 'wp-license-manager'); ?>">
+                    <button type="button" class="button" id="wplm-filter-subscriptions"><?php _e('Filter', 'wp-license-manager'); ?></button>
                 </div>
-            </div>
+
+                <div class="wplm-subscriptions-table-wrap">
+                    <table class="wp-list-table widefat fixed striped wplm-subscriptions-table">
+                        <thead>
+                            <tr>
+                                <th><?php _e('ID', 'wp-license-manager'); ?></th>
+                                <th><?php _e('Customer', 'wp-license-manager'); ?></th>
+                                <th><?php _e('Product', 'wp-license-manager'); ?></th>
+                                <th><?php _e('Status', 'wp-license-manager'); ?></th>
+                                <th><?php _e('Start Date', 'wp-license-manager'); ?></th>
+                                <th><?php _e('Next Payment', 'wp-license-manager'); ?></th>
+                                <th><?php _e('Actions', 'wp-license-manager'); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody id="wplm-subscriptions-list">
+                            <tr>
+                                <td colspan="7" class="wplm-loading-cell">
+                                    <div class="wplm-loading-spinner"><span class="wplm-spinner"></span> <?php _e('Loading subscriptions...', 'wp-license-manager'); ?></div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="wplm-pagination" id="wplm-subscriptions-pagination"></div>
+                </div>
+            <?php endif; ?>
         </div>
+
+        <style>
+            /* Custom styles for Subscription page */
+            .wplm-subscriptions-wrap {
+                margin: 20px 0;
+            }
+            .wplm-subscription-stats-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 20px;
+                margin-bottom: 20px;
+            }
+            .wplm-subscription-stats-grid .wplm-stat-item {
+                background: #fff;
+                border: 1px solid #e1e1e1;
+                border-radius: 8px;
+                padding: 15px;
+                text-align: center;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+            .wplm-subscription-stats-grid .wplm-stat-item h3 {
+                margin: 0 0 5px 0;
+                font-size: 24px;
+                font-weight: 700;
+                color: #1d2327;
+            }
+            .wplm-subscription-stats-grid .wplm-stat-item p {
+                margin: 0;
+                font-size: 13px;
+                color: #646970;
+            }
+            .wplm-subscription-filters {
+                display: flex;
+                gap: 10px;
+                margin-bottom: 20px;
+                padding: 15px;
+                background: #fff;
+                border: 1px solid #e1e1e1;
+                border-radius: 8px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                align-items: center;
+            }
+            .wplm-subscription-filters select,
+            .wplm-subscription-filters input[type="search"] {
+                padding: 8px 12px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                flex-grow: 1;
+                max-width: 250px;
+            }
+            .wplm-subscriptions-table-wrap {
+                background: #fff;
+                border: 1px solid #e1e1e1;
+                border-radius: 8px;
+                overflow: hidden;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+            .wplm-subscriptions-table th,
+            .wplm-subscriptions-table td {
+                padding: 12px 15px;
+                text-align: left;
+                border-bottom: 1px solid #f1f1f1;
+            }
+            .wplm-subscriptions-table th {
+                background: #f8f9fa;
+                font-weight: 600;
+                color: #1d2327;
+            }
+            .wplm-subscriptions-table tbody tr:last-child td {
+                border-bottom: none;
+            }
+            .wplm-loading-cell {
+                text-align: center;
+                padding: 50px;
+            }
+            .wplm-loading-spinner {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
+                font-size: 16px;
+                color: #555;
+            }
+            .wplm-loading-spinner .wplm-spinner {
+                border-color: #f3f3f3; /* Light grey */
+                border-top-color: #3498db; /* Blue */
+                border-width: 3px;
+                width: 20px;
+                height: 20px;
+                -webkit-animation: spin 2s linear infinite;
+                animation: spin 2s linear infinite;
+            }
+            @-webkit-keyframes spin {
+                0% { -webkit-transform: rotate(0deg); }
+                100% { -webkit-transform: rotate(360deg); }
+            }
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            /* Responsive adjustments */
+            @media (max-width: 768px) {
+                .wplm-subscription-filters {
+                    flex-direction: column;
+                    align-items: stretch;
+                }
+                .wplm-subscription-filters select,
+                .wplm-subscription-filters input[type="search"] {
+                    max-width: 100%;
+                }
+                .wplm-subscriptions-table th,
+                .wplm-subscriptions-table td {
+                    padding: 10px;
+                    font-size: 13px;
+                }
+            }
+
+            /* Dark mode support */
+            @media (prefers-color-scheme: dark) {
+                .wplm-subscription-stats-grid .wplm-stat-item,
+                .wplm-subscription-filters,
+                .wplm-subscriptions-table-wrap {
+                    background: #1e1e1e;
+                    border-color: #3c3c3c;
+                    color: #e1e1e1;
+                }
+                .wplm-subscription-stats-grid .wplm-stat-item h3,
+                .wplm-subscriptions-table th {
+                    color: #e1e1e1;
+                }
+                .wplm-subscriptions-table td {
+                    color: #ccc;
+                }
+                .wplm-subscription-filters select,
+                .wplm-subscription-filters input[type="search"] {
+                    background: #2c2c2c;
+                    border-color: #3c3c3c;
+                    color: #e1e1e1;
+                }
+            }
+        </style>
         <?php
     }
     
@@ -3068,7 +2955,12 @@ class WPLM_Admin_Manager {
             return;
         }
         
-        $activities = WPLM_Activity_Logger::get_global_log();
+        global $wpdb;
+        $activities = $wpdb->get_results("
+            SELECT * FROM {$wpdb->prefix}wplm_activity_log 
+            ORDER BY created_at DESC 
+            LIMIT 100
+        ");
         
         if (empty($activities)) {
             echo '<p>' . __('No activity logged yet.', 'wp-license-manager') . '</p>';
@@ -3080,18 +2972,16 @@ class WPLM_Admin_Manager {
         echo '<th>' . __('Date/Time', 'wp-license-manager') . '</th>';
         echo '<th>' . __('Type', 'wp-license-manager') . '</th>';
         echo '<th>' . __('Description', 'wp-license-manager') . '</th>';
-        echo '<th>' . __('Object Type', 'wp-license-manager') . '</th>';
         echo '<th>' . __('Object ID', 'wp-license-manager') . '</th>';
         echo '</tr></thead>';
         echo '<tbody>';
         
         foreach ($activities as $activity) {
             echo '<tr>';
-            echo '<td>' . esc_html(date('Y-m-d H:i:s', strtotime($activity['timestamp']))) . '</td>';
-            echo '<td><span class="wplm-activity-type">' . esc_html($activity['event_type']) . '</span></td>';
-            echo '<td>' . esc_html($activity['description']) . '</td>';
-            echo '<td>' . esc_html(ucfirst(str_replace('wplm_', '', $activity['object_type']))) . '</td>';
-            echo '<td>' . esc_html($activity['object_id']) . '</td>';
+            echo '<td>' . esc_html(date('Y-m-d H:i:s', strtotime($activity->created_at))) . '</td>';
+            echo '<td><span class="wplm-activity-type">' . esc_html($activity->activity_type) . '</span></td>';
+            echo '<td>' . esc_html($activity->description) . '</td>';
+            echo '<td>' . esc_html($activity->object_id) . '</td>';
             echo '</tr>';
         }
         
@@ -3108,529 +2998,87 @@ class WPLM_Admin_Manager {
         </style>';
     }
 
-    public function ajax_search_products() {
-        check_ajax_referer('wplm_search_products_nonce', 'nonce');
-
-        if (!current_user_can('manage_wplm_licenses')) {
-            wp_send_json_error(['message' => __('Insufficient permissions', 'wp-license-manager')]);
-        }
-
-        $search_term = sanitize_text_field($_GET['q'] ?? '');
-        $results = [];
-
-        // Search WPLM Native Products
-        $wplm_products = get_posts([
-            'post_type' => 'wplm_product',
-            'posts_per_page' => 20,
-            'post_status' => 'publish',
-            's' => $search_term, // Search by title
-            'meta_query' => [
-                [
-                    'key' => '_wplm_product_id',
-                    'value' => $search_term,
-                    'compare' => 'LIKE',
-                ],
-                'relation' => 'OR',
-            ],
-        ]);
-
-        foreach ($wplm_products as $product) {
-            $prod_id_meta = get_post_meta($product->ID, '_wplm_product_id', true);
-            $results[] = [
-                'id' => 'wplm|' . $prod_id_meta,
-                'text' => '[WPLM] ' . $product->post_title . ' (' . $prod_id_meta . ')',
-            ];
-        }
-
-        // Search WooCommerce Products (if active)
-        if (function_exists('wc_get_products')) {
-            $wc_products = wc_get_products([
-                'limit' => 20,
-                'status' => 'publish',
-                'type' => 'virtual',
-                's' => $search_term,
-            ]);
-
-            foreach ($wc_products as $product) {
-                $results[] = [
-                    'id' => 'woocommerce|' . $product->get_id(),
-                    'text' => '[WC] ' . $product->get_name() . ' (ID: ' . $product->get_id() . ')',
-                ];
-            }
-        }
-
-        wp_send_json_success(['results' => $results]);
-    }
-
     /**
-     * AJAX handler to scan WooCommerce orders and generate licenses.
+     * Helper to get subscription data with filters.
+     *
+     * @param array $filters Filters for subscriptions (status, search).
+     * @return array Formatted subscription data.
      */
-    public function ajax_scan_orders_new() {
-        check_ajax_referer('wplm_scan_orders_nonce', '_wpnonce');
-
-        if (!current_user_can('manage_woocommerce')) {
-            wp_send_json_error(['message' => __('You do not have sufficient permissions to scan WooCommerce orders.', 'wp-license-manager')]);
+    private function get_subscription_data($filters = []) {
+        if (!class_exists('WCS_Subscription')) {
+            return [];
         }
 
-        $orders_scanned = 0;
-        $licenses_generated = 0;
-        $errors = [];
-
-        // Get all completed WooCommerce orders
-        $orders = wc_get_orders([
-            'status' => 'completed',
-            'limit' => -1,
-        ]);
-
-        if (empty($orders)) {
-            wp_send_json_success([
-                'message' => __('No completed orders found to scan.', 'wp-license-manager'),
-                'orders_scanned' => 0,
-                'licenses_generated' => 0,
-                'last_scan_time' => current_time('mysql'),
-            ]);
-        }
-
-        foreach ($orders as $order) {
-            $orders_scanned++;
-            foreach ($order->get_items() as $item_id => $item) {
-                $product_id = $item->get_product_id();
-                $wc_product = wc_get_product($product_id);
-
-                if (!$wc_product) {
-                    continue;
-                }
-
-                $is_licensed = get_post_meta($product_id, '_wplm_wc_is_licensed_product', true);
-                $linked_wplm_product_id = get_post_meta($product_id, '_wplm_wc_linked_wplm_product_id', true);
-
-                if ($is_licensed === 'yes' && !empty($linked_wplm_product_id)) {
-                    // Check if a license has already been generated for this order item
-                    $license_for_order_item = get_posts([
-                        'post_type' => 'wplm_license',
-                        'meta_query' => [
-                            'relation' => 'AND',
-                            [
-                                'key' => '_wplm_source_order_id',
-                                'value' => $order->get_id(),
-                                'compare' => '='
-                            ],
-                            [
-                                'key' => '_wplm_source_order_item_id',
-                                'value' => $item_id,
-                                'compare' => '='
-                            ],
-                            [
-                                'key' => '_wplm_product_id',
-                                'value' => $linked_wplm_product_id,
-                                'compare' => '='
-                            ]
-                        ],
-                        'posts_per_page' => 1,
-                        'fields' => 'ids'
-                    ]);
-
-                    if (!empty($license_for_order_item)) {
-                        // License already generated for this item, skip
-                        continue;
-                    }
-
-                    // Get license duration and activation limit from product settings or variation
-                    $duration_type = get_post_meta($linked_wplm_product_id, '_wplm_default_duration_type', true) ?: 'lifetime';
-                    $duration_value = get_post_meta($linked_wplm_product_id, '_wplm_default_duration_value', true) ?: 1;
-                    $activation_limit = get_post_meta($linked_wplm_product_id, '_wplm_default_activation_limit', true) ?: 1;
-
-                    // If it's a variable product, check variation-specific settings
-                    if ($wc_product->is_type('variable') && $item->get_variation_id()) {
-                        $variation_id = $item->get_variation_id();
-                        $variation_duration_type = get_post_meta($variation_id, '_wplm_computed_duration_type', true);
-                        $variation_duration_value = get_post_meta($variation_id, '_wplm_computed_duration_value', true);
-                        $variation_activation_limit = get_post_meta($variation_id, '_wplm_computed_activation_limit', true);
-
-                        if (!empty($variation_duration_type)) $duration_type = $variation_duration_type;
-                        if (!empty($variation_duration_value)) $duration_value = $variation_duration_value;
-                        if (!empty($variation_activation_limit)) $activation_limit = $variation_activation_limit;
-                    }
-
-                    // Generate a new license key
-                    $license_key = self::generate_standard_license_key();
-                    $customer_email = $order->get_billing_email();
-
-                    $new_license_id = wp_insert_post([
-                        'post_title' => $license_key,
-                        'post_status' => 'publish',
-                        'post_type' => 'wplm_license',
-                    ], true);
-
-                    if (!is_wp_error($new_license_id)) {
-                        update_post_meta($new_license_id, '_wplm_status', 'active');
-                        update_post_meta($new_license_id, '_wplm_product_id', $linked_wplm_product_id);
-                        update_post_meta($new_license_id, '_wplm_product_type', 'wplm'); // Always WPLM type for generated licenses
-                        update_post_meta($new_license_id, '_wplm_customer_email', $customer_email);
-                        update_post_meta($new_license_id, '_wplm_activation_limit', $activation_limit);
-                        update_post_meta($new_license_id, '_wplm_source_order_id', $order->get_id());
-                        update_post_meta($new_license_id, '_wplm_source_order_item_id', $item_id);
-                        update_post_meta($new_license_id, '_wplm_duration_type', $duration_type);
-                        update_post_meta($new_license_id, '_wplm_duration_value', $duration_value);
-
-                        if ($duration_type !== 'lifetime') {
-                            $expiry_date = $this->calculate_expiry_date($duration_type, $duration_value);
-                            update_post_meta($new_license_id, '_wplm_expiry_date', $expiry_date);
-                        }
-
-                        $licenses_generated++;
-
-                        // Log the license generation
-                        if (class_exists('WPLM_Activity_Logger')) {
-                            WPLM_Activity_Logger::log(
-                                $new_license_id,
-                                'license_generated_from_wc_order',
-                                sprintf('License key %s generated from WooCommerce Order #%d for product %s', $license_key, $order->get_id(), $wc_product->get_name()),
-                                [
-                                    'license_key' => $license_key,
-                                    'wc_order_id' => $order->get_id(),
-                                    'wc_product_id' => $product_id,
-                                    'wplm_product_id' => $linked_wplm_product_id
-                                ]
-                            );
-                        }
-                    } else {
-                        $errors[] = sprintf(__('Failed to generate license for Order #%d, Item %s: %s', 'wp-license-manager'), $order->get_id(), $item->get_name(), $new_license_id->get_error_message());
-                        error_log('WPLM Scan Orders Error: ' . end($errors));
-                    }
-                }
-            }
-        }
-
-        update_option('wplm_last_wc_scan_time', current_time('mysql'));
-
-        if (!empty($errors)) {
-            wp_send_json_error([
-                'message' => sprintf(__('Scan completed with %d errors. Generated %d licenses.', 'wp-license-manager'), count($errors), $licenses_generated) . '<br>' . implode('<br>', $errors),
-                'orders_scanned' => $orders_scanned,
-                'licenses_generated' => $licenses_generated,
-                'last_scan_time' => current_time('mysql')
-            ]);
-        } else {
-            wp_send_json_success([
-                'message' => sprintf(__('Scan complete! Scanned %d orders and generated %d new licenses.', 'wp-license-manager'), $orders_scanned, $licenses_generated),
-                'orders_scanned' => $orders_scanned,
-                'licenses_generated' => $licenses_generated,
-                'last_scan_time' => current_time('mysql')
-            ]);
-        }
-    }
-
-    /**
-     * AJAX handler for creating a new customer profile.
-     */
-    public function ajax_create_customer_profile() {
-        check_ajax_referer('wplm_create_customer_nonce', 'nonce');
-
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => __('Permission denied', 'wp-license-manager')]);
-        }
-
-        $user_id = isset($_POST['user_id']) ? absint(str_replace('wp-', '', $_POST['user_id'])) : 0;
-        $first_name = sanitize_text_field($_POST['first_name'] ?? '');
-        $last_name = sanitize_text_field($_POST['last_name'] ?? '');
-        $email = sanitize_email($_POST['email'] ?? '');
-        $company = sanitize_text_field($_POST['company'] ?? '');
-        $phone = sanitize_text_field($_POST['phone'] ?? '');
-        $address = sanitize_text_field($_POST['address'] ?? '');
-        $city = sanitize_text_field($_POST['city'] ?? '');
-        $state = sanitize_text_field($_POST['state'] ?? '');
-        $zip = sanitize_text_field($_POST['zip'] ?? '');
-        $country = sanitize_text_field($_POST['country'] ?? '');
-        $social_media = sanitize_textarea_field($_POST['social_media'] ?? '');
-
-        if (empty($first_name) || empty($last_name) || empty($email)) {
-            wp_send_json_error(['message' => __('First Name, Last Name, and Email are required.', 'wp-license-manager')]);
-        }
-
-        // Check if customer with this email already exists
-        $existing_customer = get_posts([
-            'post_type' => 'wplm_customer',
-            'posts_per_page' => 1,
-            'meta_query' => [
-                [
-                    'key' => '_wplm_email',
-                    'value' => $email,
-                    'compare' => '=',
-                ],
-            ],
-            'fields' => 'ids',
-        ]);
-
-        if (!empty($existing_customer)) {
-            wp_send_json_error(['message' => __('A customer with this email already exists.', 'wp-license-manager')]);
-        }
-
-        $post_title = $first_name . ' ' . $last_name . ' (' . $email . ')';
-
-        $post_data = [
-            'post_title'    => $post_title,
-            'post_status'   => 'publish',
-            'post_type'     => 'wplm_customer',
+        $args = [
+            'subscriptions_per_page' => -1, // Get all to filter manually if needed
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'meta_query' => [],
         ];
 
-        $customer_id = wp_insert_post($post_data, true);
-
-        if (is_wp_error($customer_id)) {
-            wp_send_json_error(['message' => $customer_id->get_error_message()]);
+        if (!empty($filters['status'])) {
+            $args['subscription_status'] = sanitize_text_field($filters['status']);
         }
 
-        // Save all meta data
-        update_post_meta($customer_id, '_wplm_first_name', $first_name);
-        update_post_meta($customer_id, '_wplm_last_name', $last_name);
-        update_post_meta($customer_id, '_wplm_email', $email);
-        update_post_meta($customer_id, '_wplm_company', $company);
-        update_post_meta($customer_id, '_wplm_phone', $phone);
-        update_post_meta($customer_id, '_wplm_address', $address);
-        update_post_meta($customer_id, '_wplm_city', $city);
-        update_post_meta($customer_id, '_wplm_state', $state);
-        update_post_meta($customer_id, '_wplm_zip', $zip);
-        update_post_meta($customer_id, '_wplm_country', $country);
-        update_post_meta($customer_id, '_wplm_social_media', $social_media);
+        $subscriptions = wcs_get_subscriptions($args);
+        $formatted_subscriptions = [];
 
-        if ($user_id) {
-            update_post_meta($customer_id, '_wplm_user_id', $user_id);
-        }
+        foreach ($subscriptions as $subscription) {
+            // Basic search filtering
+            if (!empty($filters['search'])) {
+                $search_term = strtolower(sanitize_text_field($filters['search']));
+                $customer = new WC_Customer($subscription->get_customer_id());
+                $product = $subscription->get_product();
 
-        wp_send_json_success(['message' => __('Customer created successfully.', 'wp-license-manager'), 'customer_id' => $customer_id, 'redirect' => admin_url('post.php?post=' . $customer_id . '&action=edit')]);
-    }
+                $match = false;
+                if (stripos($subscription->get_id(), $search_term) !== false) $match = true;
+                if (stripos($customer->get_billing_email(), $search_term) !== false) $match = true;
+                if (stripos($customer->get_display_name(), $search_term) !== false) $match = true;
+                if ($product && stripos($product->get_name(), $search_term) !== false) $match = true;
 
-    /**
-     * AJAX handler for searching WordPress users.
-     */
-    public function ajax_search_users() {
-        check_ajax_referer('wplm_search_users_nonce', 'nonce');
-
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => __('Permission denied', 'wp-license-manager')]);
-        }
-
-        $search_term = sanitize_text_field($_GET['q'] ?? '');
-        $results = [];
-
-        if (empty($search_term)) {
-            wp_send_json_success(['results' => $results]);
-        }
-
-        $users = get_users([
-            'search' => '*' . $search_term . '*',
-            'search_columns' => ['user_login', 'user_nicename', 'user_email', 'display_name'],
-            'number' => 20,
-            'fields' => ['ID', 'display_name'],
-        ]);
-
-        foreach ($users as $user) {
-            $results[] = [
-                'id' => 'wp-' . $user->ID,
-                'text' => $user->display_name . ' (ID: ' . $user->ID . ')',
-            ];
-        }
-
-        wp_send_json_success(['results' => $results]);
-    }
-
-    /**
-     * Generates a unique standard license key.
-     * Format: XXXX-XXXX-XXXX-XXXX-XXXX (20 characters + 4 dashes = 24 total)
-     *
-     * @return string The generated license key.
-     */
-    private static function generate_standard_license_key(): string {
-        $chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-        $key_parts = [];
-
-        for ($i = 0; $i < 5; $i++) {
-            $part = '';
-            for ($j = 0; $j < 4; $j++) {
-                $part .= $chars[random_int(0, strlen($chars) - 1)];
+                if (!$match) continue;
             }
-            $key_parts[] = $part;
-        }
 
-        return implode('-', $key_parts);
-    }
+            $customer = new WC_Customer($subscription->get_customer_id());
+            $product = $subscription->get_product();
+            $product_name = $product ? $product->get_name() : __('N/A', 'wp-license-manager');
 
-    public function ajax_search_woocommerce_products() {
-        check_ajax_referer('wplm_search_woocommerce_products_nonce', 'nonce');
-
-        if (!current_user_can('manage_wplm_licenses')) {
-            wp_send_json_error(['message' => __('Insufficient permissions', 'wp-license-manager')]);
-        }
-
-        $search_term = sanitize_text_field($_GET['q'] ?? '');
-        $results = [];
-
-        // Search WooCommerce Products
-        $wc_products = wc_get_products([
-            'limit' => 20,
-            'status' => 'publish',
-            'type' => 'virtual',
-            's' => $search_term,
-        ]);
-
-        foreach ($wc_products as $product) {
-            $results[] = [
-                'id' => 'woocommerce|' . $product->get_id(),
-                'text' => '[WC] ' . $product->get_name() . ' (ID: ' . $product->get_id() . ')',
+            $formatted_subscriptions[] = [
+                'id' => $subscription->get_id(),
+                'customer_name' => $customer->get_display_name(),
+                'customer_edit_link' => get_edit_post_link($customer->get_id()), // Assuming customer is a WP user
+                'product_name' => $product_name,
+                'status_slug' => $subscription->get_status(),
+                'status_text' => wc_get_order_status_name($subscription->get_status()),
+                'start_date' => wc_format_datetime($subscription->get_date('start')), // Format date
+                'next_payment_date' => $subscription->get_date('next_payment') ? wc_format_datetime($subscription->get_date('next_payment')) : __('N/A', 'wp-license-manager'),
+                'can_cancel' => $subscription->can_be_cancelled(),
+                'can_reactivate' => $subscription->can_be_reactivated(),
+                // Add more data as needed for the modal
             ];
         }
 
-        wp_send_json_success(['results' => $results]);
+        return $formatted_subscriptions;
     }
 
     /**
-     * AJAX handler for filtering activity log.
+     * AJAX handler for filtering subscriptions.
      */
-    public function ajax_filter_activity_log() {
-        check_ajax_referer('wplm_filter_activity', 'nonce');
+    public function ajax_filter_subscriptions() {
+        check_ajax_referer('wplm_filter_subscriptions', 'nonce');
 
         if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => __('Permission denied', 'wp-license-manager')]);
+            wp_send_json_error(['message' => __('Permission denied.', 'wp-license-manager')]);
         }
 
-        $activity_type = sanitize_text_field($_POST['activity_type'] ?? '');
-        $date_from = sanitize_text_field($_POST['date_from'] ?? '');
-        $date_to = sanitize_text_field($_POST['date_to'] ?? '');
-
-        // Get filtered activities
-        if (class_exists('WPLM_Activity_Logger')) {
-            $activities = WPLM_Activity_Logger::get_global_log($activity_type, $date_from, $date_to);
-        } else {
-            $activities = [];
-        }
-        
-        ob_start();
-        $this->render_activity_log_table_content($activities);
-        $html = ob_get_clean();
-
-        wp_send_json_success(['html' => $html]);
-    }
-
-    /**
-     * AJAX handler for clearing activity log.
-     */
-    public function ajax_clear_activity_log() {
-        check_ajax_referer('wplm_clear_activity', 'nonce');
-
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => __('Permission denied', 'wp-license-manager')]);
+        $filters = isset($_POST['status']) ? ['status' => sanitize_text_field($_POST['status'])] : [];
+        $search_term = isset($_POST['search']) ? sanitize_text_field($_POST['search']) : '';
+        if (!empty($search_term)) {
+            $filters['search'] = $search_term;
         }
 
-        if (class_exists('WPLM_Activity_Logger')) {
-            WPLM_Activity_Logger::clear_global_log();
-            wp_send_json_success(['message' => __('Activity log cleared successfully.', 'wp-license-manager')]);
-        } else {
-            wp_send_json_error(['message' => __('Activity logging is not available.', 'wp-license-manager')]);
-        }
-    }
+        $subscriptions = $this->get_subscription_data($filters);
 
-    /**
-     * AJAX handler for getting activity logs for DataTables.
-     */
-    public function ajax_get_activity_logs() {
-        check_ajax_referer('wplm_activity_log', 'nonce');
-
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => __('Permission denied', 'wp-license-manager')]);
-        }
-
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'wplm_activity_log';
-
-        $draw = intval($_POST['draw'] ?? 1);
-        $start = intval($_POST['start'] ?? 0);
-        $length = intval($_POST['length'] ?? 10);
-        $search_value = sanitize_text_field($_POST['search']['value'] ?? '');
-        $order_column_idx = intval($_POST['order']['0']['column'] ?? 0);
-        $order_dir = sanitize_text_field($_POST['order']['0']['dir'] ?? 'desc');
-        $columns = $_POST['columns'] ?? [];
-
-        $orderable_columns = [
-            'id', 'item_id', 'event_type', 'description', 'created_at', 'meta_data'
-        ];
-        $order_by = $orderable_columns[$order_column_idx] ?? 'created_at';
-
-        $where_clauses = [];
-        $params = [];
-
-        if (!empty($search_value)) {
-            $where_clauses[] = "(id LIKE %s OR item_id LIKE %s OR event_type LIKE %s OR description LIKE %s OR meta_data LIKE %s)";
-            $search_param = '%' . $wpdb->esc_like($search_value) . '%';
-            array_push($params, $search_param, $search_param, $search_param, $search_param, $search_param);
-        }
-
-        $where_sql = count($where_clauses) > 0 ? "WHERE " . implode(" AND ", $where_clauses) : "";
-
-        $total_records = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $table_name $where_sql", $params));
-
-        $activities = $wpdb->get_results($wpdb->prepare("
-            SELECT * FROM $table_name 
-            $where_sql
-            ORDER BY $order_by $order_dir
-            LIMIT %d OFFSET %d
-        ", array_merge($params, [$length, $start])));
-
-        $data = [];
-        foreach ($activities as $activity) {
-            $data[] = [
-                'id' => $activity->id,
-                'item_id' => $activity->item_id,
-                'event_type' => esc_html($activity->event_type),
-                'description' => esc_html($activity->description),
-                'created_at' => esc_html($activity->created_at),
-                'meta_data' => '<pre>' . esc_html(json_encode(json_decode($activity->meta_data), JSON_PRETTY_PRINT)) . '</pre>',
-            ];
-        }
-
-        wp_send_json([
-            'draw' => $draw,
-            'recordsTotal' => intval($total_records),
-            'recordsFiltered' => intval($total_records),
-            'data' => $data,
-        ]);
-    }
-
-    /**
-     * Render the activity log table content.
-     *
-     * @param array $activities The activities to render.
-     */
-    private function render_activity_log_table_content($activities) {
-        if (empty($activities)) {
-            echo '<p>' . __('No data available.', 'wp-license-manager') . '</p>';
-            return;
-        }
-
-        echo '<table class="wp-list-table widefat fixed striped">';
-        echo '<thead>';
-        echo '<tr>';
-        echo '<th style="width: 50px;">' . __('ID', 'wp-license-manager') . '</th>';
-        echo '<th style="width: 80px;">' . __('Item ID', 'wp-license-manager') . '</th>';
-        echo '<th style="width: 150px;">' . __('Event Type', 'wp-license-manager') . '</th>';
-        echo '<th>' . __('Description', 'wp-license-manager') . '</th>';
-        echo '<th style="width: 150px;">' . __('Created At', 'wp-license-manager') . '</th>';
-        echo '<th style="width: 200px;">' . __('Meta Data', 'wp-license-manager') . '</th>';
-        echo '</tr>';
-        echo '</thead>';
-        echo '<tbody>';
-
-        foreach ($activities as $activity) {
-            echo '<tr>';
-            echo '<td>' . esc_html($activity->id) . '</td>';
-            echo '<td>' . esc_html($activity->item_id) . '</td>';
-            echo '<td>' . esc_html($activity->event_type) . '</td>';
-            echo '<td>' . esc_html($activity->description) . '</td>';
-            echo '<td>' . esc_html($activity->created_at) . '</td>';
-            echo '<td><pre>' . esc_html(json_encode(json_decode($activity->meta_data), JSON_PRETTY_PRINT)) . '</pre></td>';
-            echo '</tr>';
-        }
-
-        echo '</tbody>';
-        echo '</table>';
+        wp_send_json_success(['subscriptions' => $subscriptions]);
     }
 }
