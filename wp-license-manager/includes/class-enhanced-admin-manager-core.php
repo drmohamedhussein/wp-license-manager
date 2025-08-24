@@ -239,4 +239,22 @@ class WPLM_Enhanced_Admin_Manager_Core {
         </div>
         <?php
     }
+
+    /**
+     * Render settings page
+     */
+    public function render_settings_page() {
+        ?>
+        <div class="wrap">
+            <h1><?php esc_html_e('License Manager Settings', 'wp-license-manager'); ?></h1>
+            <form method="post" action="options.php">
+                <?php
+                settings_fields('wplm_general_settings');
+                do_settings_sections('wplm-general-settings');
+                submit_button();
+                ?>
+            </form>
+        </div>
+        <?php
+    }
 }

@@ -581,4 +581,46 @@ class WPLM_Advanced_Licensing_Core {
             'server_time' => current_time('mysql'),
         ];
     }
+
+    /**
+     * Save license type meta
+     */
+    public function save_license_type_meta($post_id) {
+        // Check if this is an auto-save
+        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+            return;
+        }
+
+        // Check permissions
+        if (!current_user_can('edit_post', $post_id)) {
+            return;
+        }
+
+        // Check nonce
+        if (!isset($_POST['wplm_license_type_nonce']) || !wp_verify_nonce($_POST['wplm_license_type_nonce'], 'wplm_save_license_type_meta')) {
+            return;
+        }
+
+        // Save license type meta fields
+        if (isset($_POST['_wplm_license_type_price'])) {
+            update_post_meta($post_id, '_wplm_license_type_price', sanitize_text_field($_POST['_wplm_license_type_price']));
+        }
+
+        if (isset($_POST['_wplm_license_type_duration'])) {
+            update_post_meta($post_id, '_wplm_license_type_duration', absint($_POST['_wplm_license_type_duration']));
+        }
+
+        if (isset($_POST['_wplm_license_type_duration_unit'])) {
+            update_post_meta($post_id, '_wplm_license_type_duration_unit', sanitize_key($_POST['_wplm_license_type_duration_unit']));
+        }
+
+        if (isset($_POST['_wplm_license_type_activation_limit'])) {
+            update_post_meta($post_id, '_wplm_license_type_activation_limit', absint($_POST['_wplm_license_type_activation_limit']));
+        }
+
+        if (isset($_POST['_wplm_license_type_features'])) {
+            $features = array_map('sanitize_text_field', $_POST['_wplm_license_type_features']);
+            update_post_meta($post_id, '_wplm_license_type_features', $features);
+        }
+    }
 }

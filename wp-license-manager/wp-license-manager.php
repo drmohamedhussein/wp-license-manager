@@ -571,7 +571,7 @@ final class WP_License_Manager {
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
-            UNIQUE KEY slug (slug),
+            KEY slug (slug),
             KEY status (status)
         ) $charset_collate;";
         
@@ -678,6 +678,9 @@ final class WP_License_Manager {
         $existing_types = get_option('wplm_license_types', []);
         if (empty($existing_types)) {
             update_option('wplm_license_types', $default_license_types);
+            
+            // Insert default license types into database table
+            $this->insert_default_license_types($default_license_types);
         }
     }
 
@@ -709,6 +712,38 @@ final class WP_License_Manager {
         } catch (Exception $e) {
             $this->log_error('Error checking expiring licenses: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Insert default license types into database
+     */
+    private function insert_default_license_types($license_types) {
+        global $wpdb;
+        
+        $table_name = $wpdb->prefix . 'wplm_license_types';
+        
+        foreach ($license_types as $license_type) {
+            $wpdb->insert(
+                $table_name,
+                [
+                    'name' => $license_type['name'],
+                    'slug' => $license_type['slug'],
+                    'description' => $license_type['description'],
+                    'features' => json_encode($license_type['features']),
+                    'price' => $license_type['price'],
+                    'duration' => $license_type['duration'],
+                    'duration_unit' => $license_type['duration_unit'],
+                    'activation_limit' => $license_type['activation_limit'],
+                    'status' => 'active'
+                ],
+                [
+                    '%s', '%s', '%s', '%s', '%f', '%d', '%s', '%d', '%s'
+                ]
+            );
+        }
+        
+        // Now add unique constraint after data is inserted
+        $wpdb->query("ALTER TABLE $table_name ADD UNIQUE KEY `slug` (`slug`)");
     }
 
     /**
