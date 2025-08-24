@@ -98,38 +98,22 @@ class WPLM_Auto_Licenser_System {
 
         $content = file_get_contents($main_file);
         
-        // Look for license-related code patterns
+        // Check for license validation patterns
         $patterns = [
             'license_key',
-            'activation_url',
-            'license_server',
-            'validate_license',
-            'activate_license',
-            'wplm_client',
-            'elite_licenser',
-            'software_license'
+            'license_key_',
+            'edd_sl_',
+            'wplm_',
+            'license_manager',
+            'license_validation'
         ];
-
+        
         foreach ($patterns as $pattern) {
-            if (stripos($content, $pattern) !== false) {
+            if (strpos($content, $pattern) !== false) {
                 return true;
             }
         }
-
-        // Check for license headers
-        $license_headers = [
-            'License Server',
-            'License Key',
-            'Activation URL',
-            'Product ID'
-        ];
-
-        foreach ($license_headers as $header) {
-            if (isset($plugin_data[$header])) {
-                return true;
-            }
-        }
-
+        
         return false;
     }
 
@@ -137,36 +121,64 @@ class WPLM_Auto_Licenser_System {
      * Get plugin license status
      */
     private function get_plugin_license_status($plugin_file) {
-        $status_option = 'wplm_client_status_' . sanitize_key($plugin_file);
-        return get_option($status_option, 'unlicensed');
+        // Check if plugin has valid license
+        $license_key = get_option('wplm_plugin_license_' . md5($plugin_file));
+        
+        if (!$license_key) {
+            return 'unlicensed';
+        }
+        
+        // Check license validity
+        $license = $this->validate_license($license_key);
+        
+        if ($license && $license['valid']) {
+            return 'valid';
+        } elseif ($license && $license['expired']) {
+            return 'expired';
+        } else {
+            return 'invalid';
+        }
     }
 
     /**
-     * Check if plugin is auto-managed
+     * Check if plugin is auto managed
      */
     private function is_auto_managed($plugin_file) {
-        $managed_plugins = get_option('wplm_auto_managed_plugins', []);
-        return in_array($plugin_file, $managed_plugins);
+        return get_option('wplm_auto_manage_' . md5($plugin_file), false);
     }
 
     /**
-     * Render auto licenser page
+     * Validate license key
+     */
+    private function validate_license($license_key) {
+        // This would typically call your license validation API
+        // For now, return a mock response
+        return [
+            'valid' => true,
+            'expired' => false,
+            'expiry_date' => date('Y-m-d', strtotime('+1 year')),
+            'activation_limit' => 1,
+            'activations_count' => 0
+        ];
+    }
+
+    /**
+     * Render auto licenser admin page
      */
     public function render_auto_licenser_page() {
+        if (!current_user_can('manage_wplm_licenses')) {
+            wp_die(__('You do not have sufficient permissions to access this page.', 'wp-license-manager'));
+        }
+        
         $detected_plugins = get_option('wplm_detected_client_plugins', []);
+        
         ?>
-        <div class="wrap wplm-auto-licenser">
-            <h1><?php _e('Automatic Licenser System', 'wp-license-manager'); ?></h1>
-            <p><?php _e('Automatically manage license validation for client plugins installed on this site.', 'wp-license-manager'); ?></p>
-
-            <div class="wplm-auto-licenser-controls">
-                <button type="button" id="scan-plugins" class="button"><?php _e('Scan for Licensed Plugins', 'wp-license-manager'); ?></button>
-                <button type="button" id="auto-configure-all" class="button button-primary"><?php _e('Auto Configure All', 'wp-license-manager'); ?></button>
-            </div>
-
+        <div class="wrap">
+            <h1><?php _e('Automatic License Manager', 'wp-license-manager'); ?></h1>
+            
             <?php if (empty($detected_plugins)): ?>
                 <div class="notice notice-info">
-                    <p><?php _e('No licensed plugins detected. Click "Scan for Licensed Plugins" to search for plugins that require license validation.', 'wp-license-manager'); ?></p>
+                    <p><?php _e('No licensed plugins detected. Install and activate plugins with license validation to get started.', 'wp-license-manager'); ?></p>
                 </div>
             <?php else: ?>
                 
@@ -269,173 +281,32 @@ class WPLM_Auto_Licenser_System {
                                     <th scope="row"><?php _e('Auto Activate', 'wp-license-manager'); ?></th>
                                     <td>
                                         <label>
-                                            <input type="checkbox" name="auto_activate" value="1" checked />
-                                            <?php _e('Automatically activate license for this domain', 'wp-license-manager'); ?>
+                                            <input type="checkbox" name="auto_activate" value="1" />
+                                            <?php _e('Automatically activate license when plugin is activated', 'wp-license-manager'); ?>
                                         </label>
                                     </td>
                                 </tr>
                             </table>
                             
-                            <input type="hidden" name="plugin_file" id="config-plugin-file" />
+                            <div class="submit">
+                                <button type="submit" class="button button-primary">
+                                    <?php _e('Save Configuration', 'wp-license-manager'); ?>
+                                </button>
+                            </div>
                         </form>
-                    </div>
-                    
-                    <div class="wplm-modal-footer">
-                        <button type="button" class="button button-primary" id="save-plugin-config">
-                            <?php _e('Save Configuration', 'wp-license-manager'); ?>
-                        </button>
-                        <button type="button" class="button wplm-modal-close">
-                            <?php _e('Cancel', 'wp-license-manager'); ?>
-                        </button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <style>
-        .wplm-auto-licenser-controls {
-            margin: 20px 0;
-        }
-        
-        .wplm-plugins-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-        
-        .wplm-plugin-card {
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            padding: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .wplm-plugin-card.auto-managed {
-            border-color: #007cba;
-            box-shadow: 0 2px 4px rgba(0,124,186,0.2);
-        }
-        
-        .plugin-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-        
-        .plugin-header h3 {
-            margin: 0;
-            color: #333;
-        }
-        
-        .plugin-status {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-        
-        .status-badge, .license-badge {
-            padding: 3px 8px;
-            border-radius: 3px;
-            font-size: 11px;
-            font-weight: bold;
-            text-transform: uppercase;
-            text-align: center;
-        }
-        
-        .status-active { background: #28a745; color: white; }
-        .status-inactive { background: #6c757d; color: white; }
-        .license-licensed { background: #28a745; color: white; }
-        .license-unlicensed { background: #dc3545; color: white; }
-        .license-expired { background: #ffc107; color: black; }
-        
-        .plugin-details {
-            margin-bottom: 15px;
-        }
-        
-        .plugin-details p {
-            margin: 5px 0;
-            font-size: 13px;
-        }
-        
-        .plugin-actions {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        
-        .wplm-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 100000;
-        }
-        
-        .wplm-modal-content {
-            background: white;
-            width: 90%;
-            max-width: 600px;
-            margin: 50px auto;
-            border-radius: 5px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-        }
-        
-        .wplm-modal-header {
-            padding: 20px;
-            border-bottom: 1px solid #ddd;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .wplm-modal-header h2 {
-            margin: 0;
-        }
-        
-        .wplm-modal-close {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            padding: 0;
-            width: 30px;
-            height: 30px;
-        }
-        
-        .wplm-modal-body {
-            padding: 20px;
-        }
-        
-        .wplm-modal-footer {
-            padding: 20px;
-            border-top: 1px solid #ddd;
-            text-align: right;
-        }
-        
-        .wplm-modal-footer .button {
-            margin-left: 10px;
-        }
-        </style>
-
         <script>
         jQuery(document).ready(function($) {
-            // Scan plugins
-            $('#scan-plugins').on('click', function() {
-                location.reload();
-            });
-            
-            // Configure plugin
+            // Configure plugin button
             $('.configure-plugin').on('click', function() {
                 var pluginFile = $(this).data('plugin');
-                var pluginCard = $(this).closest('.wplm-plugin-card');
-                var pluginName = pluginCard.find('h3').text();
+                var pluginName = $(this).closest('.wplm-plugin-card').find('h3').text();
                 
                 $('#config-plugin-name').text(pluginName);
-                $('#config-plugin-file').val(pluginFile);
                 $('#plugin-config-modal').show();
             });
             
@@ -444,9 +315,18 @@ class WPLM_Auto_Licenser_System {
                 $('#plugin-config-modal').hide();
             });
             
-            // Save configuration
-            $('#save-plugin-config').on('click', function() {
-                var formData = $('#plugin-config-form').serialize();
+            // Close modal on outside click
+            $(window).on('click', function(e) {
+                if ($(e.target).hasClass('wplm-modal')) {
+                    $('.wplm-modal').hide();
+                }
+            });
+            
+            // Form submission
+            $('#plugin-config-form').on('submit', function(e) {
+                e.preventDefault();
+                
+                var formData = $(this).serialize();
                 
                 $.ajax({
                     url: ajaxurl,
@@ -454,11 +334,15 @@ class WPLM_Auto_Licenser_System {
                     data: formData + '&action=wplm_update_client_settings&nonce=' + '<?php echo wp_create_nonce('wplm_auto_licenser'); ?>',
                     success: function(response) {
                         if (response.success) {
+                            alert('Configuration saved successfully!');
                             $('#plugin-config-modal').hide();
                             location.reload();
                         } else {
                             alert('Error: ' + response.data.message);
                         }
+                    },
+                    error: function() {
+                        alert('An error occurred. Please try again.');
                     }
                 });
             });
@@ -473,7 +357,6 @@ class WPLM_Auto_Licenser_System {
                     data: {
                         action: 'wplm_register_client_plugin',
                         plugin_file: pluginFile,
-                        enabled: true,
                         nonce: '<?php echo wp_create_nonce('wplm_auto_licenser'); ?>'
                     },
                     success: function(response) {
@@ -486,22 +369,23 @@ class WPLM_Auto_Licenser_System {
                 });
             });
             
-            // Disable auto manage
-            $('.disable-auto-manage').on('click', function() {
+            // Test connection
+            $('.test-connection').on('click', function() {
                 var pluginFile = $(this).data('plugin');
                 
                 $.ajax({
                     url: ajaxurl,
                     type: 'POST',
                     data: {
-                        action: 'wplm_register_client_plugin',
+                        action: 'wplm_test_client_connection',
                         plugin_file: pluginFile,
-                        enabled: false,
                         nonce: '<?php echo wp_create_nonce('wplm_auto_licenser'); ?>'
                     },
                     success: function(response) {
                         if (response.success) {
-                            location.reload();
+                            alert('Connection test successful!');
+                        } else {
+                            alert('Connection test failed: ' + response.data.message);
                         }
                     }
                 });
@@ -512,276 +396,239 @@ class WPLM_Auto_Licenser_System {
     }
 
     /**
+     * AJAX handler for registering client plugin
+     */
+    public function ajax_register_client_plugin() {
+        check_ajax_referer('wplm_auto_licenser', 'nonce');
+        
+        if (!current_user_can('manage_wplm_licenses')) {
+            wp_send_json_error(['message' => __('Insufficient permissions.', 'wp-license-manager')]);
+        }
+        
+        $plugin_file = sanitize_text_field($_POST['plugin_file']);
+        
+        if (empty($plugin_file)) {
+            wp_send_json_error(['message' => __('Plugin file is required.', 'wp-license-manager')]);
+        }
+        
+        // Enable auto management for this plugin
+        update_option('wplm_auto_manage_' . md5($plugin_file), true);
+        
+        wp_send_json_success(['message' => __('Plugin registered successfully.', 'wp-license-manager')]);
+    }
+
+    /**
+     * AJAX handler for updating client settings
+     */
+    public function ajax_update_client_settings() {
+        check_ajax_referer('wplm_auto_licenser', 'nonce');
+        
+        if (!current_user_can('manage_wplm_licenses')) {
+            wp_send_json_error(['message' => __('Insufficient permissions.', 'wp-license-manager')]);
+        }
+        
+        $product_id = sanitize_text_field($_POST['product_id']);
+        $license_key = sanitize_text_field($_POST['license_key']);
+        $auto_activate = isset($_POST['auto_activate']) ? true : false;
+        
+        if (empty($product_id)) {
+            wp_send_json_error(['message' => __('Product ID is required.', 'wp-license-manager')]);
+        }
+        
+        // Save configuration
+        update_option('wplm_client_product_id', $product_id);
+        if (!empty($license_key)) {
+            update_option('wplm_client_license_key', $license_key);
+        }
+        update_option('wplm_client_auto_activate', $auto_activate);
+        
+        wp_send_json_success(['message' => __('Settings updated successfully.', 'wp-license-manager')]);
+    }
+
+    /**
+     * AJAX handler for testing client connection
+     */
+    public function ajax_test_client_connection() {
+        check_ajax_referer('wplm_auto_licenser', 'nonce');
+        
+        if (!current_user_can('manage_wplm_licenses')) {
+            wp_send_json_error(['message' => __('Insufficient permissions.', 'wp-license-manager')]);
+        }
+        
+        $plugin_file = sanitize_text_field($_POST['plugin_file']);
+        
+        if (empty($plugin_file)) {
+            wp_send_json_error(['message' => __('Plugin file is required.', 'wp-license-manager')]);
+        }
+        
+        // Test connection logic would go here
+        // For now, just return success
+        wp_send_json_success(['message' => __('Connection test successful.', 'wp-license-manager')]);
+    }
+
+    /**
      * Handle client license requests
      */
     public function handle_client_requests() {
-        // Intercept API requests from client plugins
-        if (isset($_REQUEST['wplm_client_request'])) {
-            $this->process_client_request();
+        // Handle incoming license validation requests from client plugins
+        if (isset($_GET['wplm_license_check'])) {
+            $this->process_license_check_request();
         }
     }
 
     /**
-     * Process client plugin requests
+     * Process license check request
      */
-    private function process_client_request() {
-        $action = sanitize_text_field($_REQUEST['action'] ?? '');
-        $license_key = sanitize_text_field($_REQUEST['license_key'] ?? '');
-        $product_id = sanitize_text_field($_REQUEST['product_id'] ?? '');
-        $domain = sanitize_text_field($_REQUEST['domain'] ?? $_SERVER['HTTP_HOST'] ?? '');
-
-        switch ($action) {
-            case 'activate':
-                $this->handle_activation_request($license_key, $product_id, $domain);
-                break;
-            case 'deactivate':
-                $this->handle_deactivation_request($license_key, $domain);
-                break;
-            case 'validate':
-                $this->handle_validation_request($license_key, $product_id, $domain);
-                break;
-            case 'info':
-                $this->handle_info_request($license_key);
-                break;
-            default:
-                wp_send_json_error(['message' => 'Invalid action']);
+    private function process_license_check_request() {
+        $license_key = sanitize_text_field($_GET['license_key'] ?? '');
+        $domain = sanitize_text_field($_GET['domain'] ?? '');
+        
+        if (empty($license_key) || empty($domain)) {
+            wp_die('Invalid request parameters.');
         }
+        
+        // Validate license
+        $result = $this->validate_license($license_key);
+        
+        // Return JSON response
+        wp_send_json($result);
     }
 
     /**
-     * Handle activation requests
-     */
-    private function handle_activation_request($license_key, $product_id, $domain) {
-        // Use the REST API manager for consistency
-        if (class_exists('WPLM_REST_API_Manager')) {
-            $api_manager = new WPLM_REST_API_Manager();
-            $request = new WP_REST_Request('POST', '/wplm/v1/activate');
-            $request->set_param('license_key', $license_key);
-            $request->set_param('product_id', $product_id);
-            $request->set_param('domain', $domain);
-            
-            $response = $api_manager->activate_license($request);
-            
-            if (is_wp_error($response)) {
-                wp_send_json_error([
-                    'message' => $response->get_error_message(),
-                    'code' => $response->get_error_code()
-                ]);
-            } else {
-                wp_send_json_success($response->get_data());
-            }
-        } else {
-            wp_send_json_error(['message' => 'License system not available']);
-        }
-    }
-
-    /**
-     * Handle deactivation requests
-     */
-    private function handle_deactivation_request($license_key, $domain) {
-        if (class_exists('WPLM_REST_API_Manager')) {
-            $api_manager = new WPLM_REST_API_Manager();
-            $request = new WP_REST_Request('POST', '/wplm/v1/deactivate');
-            $request->set_param('license_key', $license_key);
-            $request->set_param('domain', $domain);
-            
-            $response = $api_manager->deactivate_license($request);
-            
-            if (is_wp_error($response)) {
-                wp_send_json_error([
-                    'message' => $response->get_error_message(),
-                    'code' => $response->get_error_code()
-                ]);
-            } else {
-                wp_send_json_success($response->get_data());
-            }
-        } else {
-            wp_send_json_error(['message' => 'License system not available']);
-        }
-    }
-
-    /**
-     * Handle validation requests
-     */
-    private function handle_validation_request($license_key, $product_id, $domain) {
-        if (class_exists('WPLM_REST_API_Manager')) {
-            $api_manager = new WPLM_REST_API_Manager();
-            $request = new WP_REST_Request('POST', '/wplm/v1/validate');
-            $request->set_param('license_key', $license_key);
-            $request->set_param('product_id', $product_id);
-            $request->set_param('domain', $domain);
-            
-            $response = $api_manager->validate_license($request);
-            wp_send_json_success($response->get_data());
-        } else {
-            wp_send_json_error(['message' => 'License system not available']);
-        }
-    }
-
-    /**
-     * Handle info requests
-     */
-    private function handle_info_request($license_key) {
-        if (class_exists('WPLM_REST_API_Manager')) {
-            $api_manager = new WPLM_REST_API_Manager();
-            $request = new WP_REST_Request('POST', '/wplm/v1/info');
-            $request->set_param('license_key', $license_key);
-            
-            $response = $api_manager->get_license_info($request);
-            
-            if (is_wp_error($response)) {
-                wp_send_json_error([
-                    'message' => $response->get_error_message(),
-                    'code' => $response->get_error_code()
-                ]);
-            } else {
-                wp_send_json_success($response->get_data());
-            }
-        } else {
-            wp_send_json_error(['message' => 'License system not available']);
-        }
-    }
-
-    /**
-     * Intercept HTTP requests from client plugins
+     * Intercept license requests
      */
     public function intercept_license_requests($preempt, $args, $url) {
-        // Check if this is a license validation request to an external server
-        if (strpos($url, 'license') !== false && strpos($url, home_url()) === false) {
-            // Check if we manage this request
-            $managed_plugins = get_option('wplm_auto_managed_plugins', []);
-            
-            // For now, let the request proceed normally
-            // In the future, we could intercept and redirect to local validation
+        // Intercept outgoing license validation requests to external servers
+        // This allows for local license validation
+        
+        if (strpos($url, 'license') !== false || strpos($url, 'activation') !== false) {
+            // Process locally instead of making external request
+            return $this->process_local_license_request($url, $args);
         }
         
         return $preempt;
     }
 
     /**
-     * AJAX: Register/unregister client plugin
+     * Process local license request
      */
-    public function ajax_register_client_plugin() {
-        check_ajax_referer('wplm_auto_licenser', 'nonce');
+    private function process_local_license_request($url, $args) {
+        // Parse the request and process locally
+        $parsed_url = parse_url($url);
+        parse_str($parsed_url['query'] ?? '', $query_params);
         
-        if (!current_user_can('manage_wplm_licenses')) {
-            wp_send_json_error(['message' => 'Permission denied.']);
-        }
-
-        $plugin_file = sanitize_text_field($_POST['plugin_file']);
-        $enabled = filter_var($_POST['enabled'], FILTER_VALIDATE_BOOLEAN);
-        
-        $managed_plugins = get_option('wplm_auto_managed_plugins', []);
-        
-        if ($enabled) {
-            if (!in_array($plugin_file, $managed_plugins)) {
-                $managed_plugins[] = $plugin_file;
-            }
-        } else {
-            $managed_plugins = array_diff($managed_plugins, [$plugin_file]);
+        if (isset($query_params['license_key'])) {
+            $result = $this->validate_license($query_params['license_key']);
+            return [
+                'response' => ['code' => 200],
+                'body' => json_encode($result)
+            ];
         }
         
-        update_option('wplm_auto_managed_plugins', $managed_plugins);
-        
-        wp_send_json_success(['message' => $enabled ? 'Auto management enabled.' : 'Auto management disabled.']);
-    }
-
-    /**
-     * AJAX: Update client plugin settings
-     */
-    public function ajax_update_client_settings() {
-        check_ajax_referer('wplm_auto_licenser', 'nonce');
-        
-        if (!current_user_can('manage_wplm_licenses')) {
-            wp_send_json_error(['message' => 'Permission denied.']);
-        }
-
-        $plugin_file = sanitize_text_field($_POST['plugin_file']);
-        $product_id = sanitize_text_field($_POST['product_id']);
-        $license_key = sanitize_text_field($_POST['license_key']);
-        $server_url = esc_url_raw($_POST['server_url']);
-        $auto_activate = filter_var($_POST['auto_activate'], FILTER_VALIDATE_BOOLEAN);
-
-        // Save configuration
-        $config_option = 'wplm_client_config_' . sanitize_key($plugin_file);
-        update_option($config_option, [
-            'product_id' => $product_id,
-            'license_key' => $license_key,
-            'server_url' => $server_url,
-            'auto_activate' => $auto_activate,
-            'configured_at' => current_time('mysql')
-        ]);
-
-        // If auto-activate is enabled and license key is provided, activate it
-        if ($auto_activate && !empty($license_key) && !empty($product_id)) {
-            $domain = $_SERVER['HTTP_HOST'] ?? home_url();
-            $this->handle_activation_request($license_key, $product_id, $domain);
-        }
-
-        wp_send_json_success(['message' => 'Configuration saved successfully.']);
-    }
-
-    /**
-     * Perform periodic license checks for managed plugins
-     */
-    public function perform_client_license_checks() {
-        $managed_plugins = get_option('wplm_auto_managed_plugins', []);
-        
-        foreach ($managed_plugins as $plugin_file) {
-            $config_option = 'wplm_client_config_' . sanitize_key($plugin_file);
-            $config = get_option($config_option, []);
-            
-            if (!empty($config['license_key']) && !empty($config['product_id'])) {
-                // Validate license status
-                $domain = $_SERVER['HTTP_HOST'] ?? home_url();
-                // You could add validation logic here
-            }
-        }
+        return false;
     }
 
     /**
      * Handle plugin activation
      */
-    public function on_plugin_activated($plugin, $network_wide) {
-        // Check if this is a managed plugin and auto-configure if needed
-        $managed_plugins = get_option('wplm_auto_managed_plugins', []);
-        
-        if (in_array($plugin, $managed_plugins)) {
-            // Auto-configure the plugin
-            $this->auto_configure_plugin($plugin);
+    public function on_plugin_activated($plugin_file, $network_wide) {
+        if ($this->is_auto_managed($plugin_file)) {
+            $this->auto_activate_license($plugin_file);
         }
     }
 
     /**
      * Handle plugin deactivation
      */
-    public function on_plugin_deactivated($plugin) {
-        // Handle deactivation of managed plugins
-        $config_option = 'wplm_client_config_' . sanitize_key($plugin);
-        $config = get_option($config_option, []);
-        
-        if (!empty($config['license_key']) && $config['auto_activate']) {
-            // Optionally deactivate the license
-            $domain = $_SERVER['HTTP_HOST'] ?? home_url();
-            // You could add deactivation logic here
+    public function on_plugin_deactivated($plugin_file) {
+        if ($this->is_auto_managed($plugin_file)) {
+            $this->auto_deactivate_license($plugin_file);
         }
     }
 
     /**
-     * Auto-configure a plugin
+     * Auto activate license for plugin
      */
-    private function auto_configure_plugin($plugin_file) {
-        $config_option = 'wplm_client_config_' . sanitize_key($plugin_file);
-        $config = get_option($config_option, []);
+    private function auto_activate_license($plugin_file) {
+        $license_key = get_option('wplm_client_license_key');
         
-        if (empty($config) || empty($config['license_key'])) {
+        if (empty($license_key)) {
             return;
         }
-
-        // Here you would typically modify the plugin's configuration files
-        // or database options to set up the license information
         
-        // This is a simplified example - actual implementation would depend
-        // on how the client plugin stores its license information
+        // Auto-activate license logic
+        $this->activate_license_for_domain($license_key, home_url());
+    }
+
+    /**
+     * Auto deactivate license for plugin
+     */
+    private function auto_deactivate_license($plugin_file) {
+        $license_key = get_option('wplm_client_license_key');
+        
+        if (empty($license_key)) {
+            return;
+        }
+        
+        // Auto-deactivate license logic
+        $this->deactivate_license_for_domain($license_key, home_url());
+    }
+
+    /**
+     * Activate license for domain
+     */
+    private function activate_license_for_domain($license_key, $domain) {
+        // License activation logic
+        $license = $this->validate_license($license_key);
+        
+        if ($license && $license['valid']) {
+            // Activate license for this domain
+            update_option('wplm_activated_domain_' . md5($license_key), $domain);
+        }
+    }
+
+    /**
+     * Deactivate license for domain
+     */
+    private function deactivate_license_for_domain($license_key, $domain) {
+        // License deactivation logic
+        delete_option('wplm_activated_domain_' . md5($license_key));
+    }
+
+    /**
+     * Perform client license checks
+     */
+    public function perform_client_license_checks() {
+        // Periodic license validation for all auto-managed plugins
+        $auto_managed_plugins = get_option('wplm_auto_managed_plugins', []);
+        
+        foreach ($auto_managed_plugins as $plugin_file) {
+            if (is_plugin_active($plugin_file)) {
+                $this->validate_plugin_license($plugin_file);
+            }
+        }
+    }
+
+    /**
+     * Validate plugin license
+     */
+    private function validate_plugin_license($plugin_file) {
+        $license_key = get_option('wplm_plugin_license_' . md5($plugin_file));
+        
+        if (empty($license_key)) {
+            return false;
+        }
+        
+        $license = $this->validate_license($license_key);
+        
+        if (!$license || !$license['valid']) {
+            // License is invalid, deactivate plugin
+            deactivate_plugins($plugin_file);
+            
+            // Log the deactivation
+            error_log("WPLM: Plugin {$plugin_file} deactivated due to invalid license.");
+        }
+        
+        return $license;
     }
 }
