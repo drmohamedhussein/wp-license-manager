@@ -225,4 +225,18 @@ class WPLM_Enhanced_Admin_Manager_Core {
 
     /**
      * Render dashboard page
+     */
+    public function render_dashboard_page() {
+        ?>
+        <div class="wrap">
+            <h1><?php esc_html_e('Enhanced License Manager Dashboard', 'wp-license-manager'); ?></h1>
+            <p><?php esc_html_e('Welcome to the enhanced license management system.', 'wp-license-manager'); ?></p>
+            
+            <div class="wplm-dashboard-overview">
+                <h2><?php esc_html_e('System Overview', 'wp-license-manager'); ?></h2>
+                <p><?php esc_html_e('This enhanced system provides advanced licensing features and management capabilities.', 'wp-license-manager'); ?></p>
+            </div>
+        </div>
+        <?php
+    }
 }
