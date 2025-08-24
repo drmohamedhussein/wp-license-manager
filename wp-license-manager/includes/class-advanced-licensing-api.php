@@ -1114,4 +1114,10 @@ class WPLM_Advanced_Licensing_API {
                     ['domain' => sanitize_text_field($domain)]
                 );
             }
+            
+            return ['valid' => true, 'message' => esc_html__('License deactivated successfully.', 'wplm')];
+        }
+        
+        return ['valid' => false, 'message' => esc_html__('Domain not found for this license.', 'wplm')];
+    }
 }
