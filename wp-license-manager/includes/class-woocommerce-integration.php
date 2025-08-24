@@ -239,105 +239,215 @@ class WPLM_WooCommerce_Integration {
      * Create WPLM product from WooCommerce product
      */
     private function create_wplm_product_from_wc($wc_product, $wc_product_id) {
-        $product_title = $wc_product->get_name();
-        $product_slug = sanitize_title($product_title);
-        
-        // Ensure unique slug
-        $original_slug = $product_slug;
-        $counter = 1;
-        while (get_page_by_title($product_slug, OBJECT, 'wplm_product')) {
-            $product_slug = $original_slug . '-' . $counter++;
-        }
-        
-        // Create WPLM product
-        $wplm_product_id = wp_insert_post([
-            'post_title' => $product_title,
-            'post_name' => $product_slug,
-            'post_type' => 'wplm_product',
-            'post_status' => 'publish',
-            'post_content' => $wc_product->get_description()
-        ]);
-        
-        if (!is_wp_error($wplm_product_id)) {
+        try {
+            // Validate inputs
+            if (!$wc_product || !is_object($wc_product) || !method_exists($wc_product, 'get_name')) {
+                error_log('WPLM Error: Invalid WooCommerce product object provided to create_wplm_product_from_wc');
+                return false;
+            }
+            
+            $wc_product_id = absint($wc_product_id);
+            if ($wc_product_id <= 0) {
+                error_log('WPLM Error: Invalid WooCommerce product ID provided to create_wplm_product_from_wc');
+                return false;
+            }
+            
+            $product_title = sanitize_text_field($wc_product->get_name());
+            if (empty($product_title)) {
+                error_log('WPLM Error: Empty product title for WooCommerce product ID: ' . $wc_product_id);
+                return false;
+            }
+            
+            $product_slug = sanitize_title($product_title);
+            
+            // Ensure unique slug
+            $original_slug = $product_slug;
+            $counter = 1;
+            $max_attempts = 100; // Prevent infinite loops
+            
+            while ($counter <= $max_attempts && get_page_by_title($product_slug, OBJECT, 'wplm_product')) {
+                $product_slug = $original_slug . '-' . $counter++;
+            }
+            
+            if ($counter > $max_attempts) {
+                error_log('WPLM Error: Could not generate unique slug for product after ' . $max_attempts . ' attempts');
+                return false;
+            }
+            
+            // Create WPLM product
+            $wplm_product_id = wp_insert_post([
+                'post_title' => $product_title,
+                'post_name' => $product_slug,
+                'post_type' => 'wplm_product',
+                'post_status' => 'publish',
+                'post_content' => wp_kses_post($wc_product->get_description())
+            ]);
+            
+            if (is_wp_error($wplm_product_id)) {
+                error_log('WPLM Error: Failed to create WPLM product. Error: ' . $wplm_product_id->get_error_message());
+                return false;
+            }
+            
             // Set product meta
-            update_post_meta($wplm_product_id, '_wplm_current_version', '1.0.0');
-            update_post_meta($wplm_product_id, '_wplm_wc_product_id', $wc_product_id); // Store WC product ID on WPLM product
+            $meta_updates = [
+                '_wplm_current_version' => '1.0.0',
+                '_wplm_wc_product_id' => $wc_product_id,
+                '_wplm_created_from_wc' => true,
+                '_wplm_created_date' => current_time('mysql')
+            ];
+            
+            foreach ($meta_updates as $meta_key => $meta_value) {
+                if (false === update_post_meta($wplm_product_id, $meta_key, $meta_value)) {
+                    error_log('WPLM Error: Failed to update meta ' . $meta_key . ' for WPLM product ID: ' . $wplm_product_id);
+                }
+            }
             
             // Link back to WooCommerce product (using ID now)
-            update_post_meta($wc_product_id, '_wplm_wc_linked_wplm_product_id', $wplm_product_id);
-            delete_post_meta($wc_product_id, '_wplm_wc_linked_wplm_product'); // Remove old slug-based link
+            if (false === update_post_meta($wc_product_id, '_wplm_wc_linked_wplm_product_id', $wplm_product_id)) {
+                error_log('WPLM Error: Failed to link WooCommerce product ' . $wc_product_id . ' to WPLM product ' . $wplm_product_id);
+            }
             
-            return $wplm_product_id; // Return the WPLM product ID
+            // Remove old slug-based link
+            delete_post_meta($wc_product_id, '_wplm_wc_linked_wplm_product');
+            
+            // Log successful creation
+            if (class_exists('WPLM_Activity_Logger')) {
+                WPLM_Activity_Logger::log(
+                    $wplm_product_id,
+                    'wplm_product_created_from_wc',
+                    sprintf('WPLM product created from WooCommerce product "%s" (ID: %d)', $product_title, $wc_product_id),
+                    ['wc_product_id' => $wc_product_id, 'wc_product_title' => $product_title]
+                );
+            }
+            
+            return $wplm_product_id;
+            
+        } catch (Exception $e) {
+            error_log('WPLM Error: Exception in create_wplm_product_from_wc: ' . $e->getMessage());
+            return false;
         }
-        
-        return false;
     }
     
     /**
      * Generate license for specific product
      */
     private function generate_license_for_product(int $wplm_product_id, string $customer_email, $order, $item) {
-        // Generate standardized license key
-        $license_key = $this->generate_standard_license_key();
-        
-        // Ensure uniqueness by checking existing titles
-        $attempts = 0;
-        while ($attempts < 5) {
-            $existing_license = new WP_Query([
-                'post_type'      => 'wplm_license',
-                'posts_per_page' => 1,
-                'title'          => $license_key,
-                'fields'         => 'ids',
-                'exact'          => true,
-            ]);
-            if (!$existing_license->have_posts()) {
-                break;
+        try {
+            // Validate inputs
+            if ($wplm_product_id <= 0) {
+                error_log('WPLM Error: Invalid WPLM product ID provided to generate_license_for_product: ' . $wplm_product_id);
+                return false;
             }
-            $attempts++;
+            
+            if (empty($customer_email) || !is_email($customer_email)) {
+                error_log('WPLM Error: Invalid customer email provided to generate_license_for_product: ' . $customer_email);
+                return false;
+            }
+            
+            if (!$order || !is_object($order) || !method_exists($order, 'get_id')) {
+                error_log('WPLM Error: Invalid order object provided to generate_license_for_product');
+                return false;
+            }
+            
+            if (!$item || !is_object($item) || !method_exists($item, 'get_id')) {
+                error_log('WPLM Error: Invalid item object provided to generate_license_for_product');
+                return false;
+            }
+            
+            // Generate standardized license key
             $license_key = $this->generate_standard_license_key();
-        }
+            
+            // Ensure uniqueness by checking existing titles
+            $attempts = 0;
+            $max_attempts = 10; // Increased from 5 to 10
+            while ($attempts < $max_attempts) {
+                $existing_license = new WP_Query([
+                    'post_type'      => 'wplm_license',
+                    'posts_per_page' => 1,
+                    'title'          => $license_key,
+                    'fields'         => 'ids',
+                    'exact'          => true,
+                ]);
+                if (!$existing_license->have_posts()) {
+                    break;
+                }
+                $attempts++;
+                $license_key = $this->generate_standard_license_key();
+            }
 
-        if ($attempts === 5) {
-            error_log('WPLM Error: Failed to generate a unique license key after multiple attempts for WPLM product ID: ' . $wplm_product_id);
-            return false;
-        }
-        
-        // Get license settings (from WPLM product if available, fallback to global)
-        $duration_type = get_post_meta($wplm_product_id, '_wplm_wc_default_duration_type', true) ?: get_option('wplm_default_duration_type', 'lifetime');
-        $duration_value = get_post_meta($wplm_product_id, '_wplm_wc_default_duration_value', true) ?: get_option('wplm_default_duration_value', 1);
-        $activation_limit = get_option('wplm_default_activation_limit', 1);
-        
-        // Calculate expiry date
-        $expiry_date = '';
-        if ($duration_type !== 'lifetime') {
-            $expiry_date = $this->calculate_expiry_date($duration_type, $duration_value);
-        }
-        
-        // Create license post
-        $license_id = wp_insert_post([
-            'post_title' => $license_key,
-            'post_type' => 'wplm_license',
-            'post_status' => 'publish'
-        ]);
-        
-        if (!is_wp_error($license_id)) {
-            // Set license meta
-            update_post_meta($license_id, '_wplm_status', 'active');
-            update_post_meta($license_id, '_wplm_customer_email', $customer_email);
-            update_post_meta($license_id, '_wplm_product_id', $wplm_product_id); // Store WPLM Product ID
-            update_post_meta($license_id, '_wplm_product_type', 'wplm'); // Explicitly set product type as WPLM
-            update_post_meta($license_id, '_wplm_activation_limit', $activation_limit);
-            update_post_meta($license_id, '_wplm_activated_domains', []);
-            update_post_meta($license_id, '_wplm_wc_order_id', $order->get_id());
-            update_post_meta($license_id, '_wplm_wc_item_id', $item->get_id());
+            if ($attempts >= $max_attempts) {
+                error_log('WPLM Error: Failed to generate a unique license key after ' . $max_attempts . ' attempts for WPLM product ID: ' . $wplm_product_id);
+                return false;
+            }
+            
+            // Get license settings (from WPLM product if available, fallback to global)
+            $duration_type = get_post_meta($wplm_product_id, '_wplm_wc_default_duration_type', true) ?: get_option('wplm_default_duration_type', 'lifetime');
+            $duration_value = get_post_meta($wplm_product_id, '_wplm_wc_default_duration_value', true) ?: get_option('wplm_default_duration_value', 1);
+            $activation_limit = get_option('wplm_default_activation_limit', 1);
+            
+            // Calculate expiry date
+            $expiry_date = '';
+            if ($duration_type !== 'lifetime') {
+                $expiry_date = $this->calculate_expiry_date($duration_type, $duration_value);
+            }
+            
+            // Create license post
+            $license_id = wp_insert_post([
+                'post_title' => $license_key,
+                'post_type' => 'wplm_license',
+                'post_status' => 'publish'
+            ]);
+            
+            if (is_wp_error($license_id)) {
+                error_log('WPLM Error: Failed to create license post for product ID ' . $wplm_product_id . '. Error: ' . $license_id->get_error_message());
+                return false;
+            }
+            
+            // Set license meta with error checking
+            $meta_updates = [
+                '_wplm_status' => 'active',
+                '_wplm_customer_email' => sanitize_email($customer_email),
+                '_wplm_product_id' => $wplm_product_id,
+                '_wplm_product_type' => 'wplm',
+                '_wplm_activation_limit' => absint($activation_limit),
+                '_wplm_activated_domains' => [],
+                '_wplm_wc_order_id' => absint($order->get_id()),
+                '_wplm_wc_item_id' => absint($item->get_id()),
+                '_wplm_created_date' => current_time('mysql'),
+                '_wplm_created_from_wc' => true
+            ];
             
             if (!empty($expiry_date)) {
-                update_post_meta($license_id, '_wplm_expiry_date', $expiry_date);
+                $meta_updates['_wplm_expiry_date'] = $expiry_date;
+            }
+            
+            // Update all meta fields with error checking
+            foreach ($meta_updates as $meta_key => $meta_value) {
+                if (false === update_post_meta($license_id, $meta_key, $meta_value)) {
+                    error_log('WPLM Error: Failed to update meta ' . $meta_key . ' for license ID: ' . $license_id);
+                }
+            }
+            
+            // Log successful license creation
+            if (class_exists('WPLM_Activity_Logger')) {
+                WPLM_Activity_Logger::log(
+                    $license_id,
+                    'license_generated_from_wc',
+                    sprintf('License generated from WooCommerce order for product ID: %d', $wplm_product_id),
+                    [
+                        'wplm_product_id' => $wplm_product_id,
+                        'customer_email' => $customer_email,
+                        'wc_order_id' => $order->get_id(),
+                        'wc_item_id' => $item->get_id(),
+                        'license_key' => $license_key
+                    ]
+                );
             }
             
             return $license_key;
-        } else {
-            error_log('WPLM Error: Failed to create license post for product ID ' . $wplm_product_id . '. Error: ' . $license_id->get_error_message());
+            
+        } catch (Exception $e) {
+            error_log('WPLM Error: Exception in generate_license_for_product for product ID ' . $wplm_product_id . ': ' . $e->getMessage());
             return false;
         }
     }
@@ -500,11 +610,72 @@ class WPLM_WooCommerce_Integration {
             return;
         }
         
-        $is_licensed = isset($_POST['_wplm_wc_is_licensed_product']) ? 'yes' : 'no';
-        update_post_meta($post_id, '_wplm_wc_is_licensed_product', $is_licensed);
-
-        $linked_wplm_product_id = isset($_POST['_wplm_wc_linked_wplm_product_id']) ? absint($_POST['_wplm_wc_linked_wplm_product_id']) : '';
-        update_post_meta($post_id, '_wplm_wc_linked_wplm_product_id', $linked_wplm_product_id);
+        // Verify nonce for security
+        if (!isset($_POST['woocommerce_meta_nonce']) || !wp_verify_nonce($_POST['woocommerce_meta_nonce'], 'woocommerce_save_data')) {
+            return;
+        }
+        
+        // Check user permissions
+        if (!current_user_can('edit_post', $post_id)) {
+            return;
+        }
+        
+        // Validate post type
+        if (get_post_type($post_id) !== 'product') {
+            return;
+        }
+        
+        // Prevent autosave
+        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+            return;
+        }
+        
+        try {
+            // Sanitize and validate the licensed product checkbox
+            $is_licensed = isset($_POST['_wplm_wc_is_licensed_product']) ? 'yes' : 'no';
+            
+            // Update the licensed product status
+            if (false === update_post_meta($post_id, '_wplm_wc_is_licensed_product', $is_licensed)) {
+                error_log('WPLM Error: Failed to update licensed product status for post ID: ' . $post_id);
+            }
+            
+            // Sanitize and validate the linked WPLM product ID
+            $linked_wplm_product_id = '';
+            if (isset($_POST['_wplm_wc_linked_wplm_product_id']) && !empty($_POST['_wplm_wc_linked_wplm_product_id'])) {
+                $linked_wplm_product_id = absint($_POST['_wplm_wc_linked_wplm_product_id']);
+                
+                // Validate that the linked product exists and is a WPLM product
+                if ($linked_wplm_product_id > 0) {
+                    $linked_product = get_post($linked_wplm_product_id);
+                    if (!$linked_product || $linked_product->post_type !== 'wplm_product') {
+                        error_log('WPLM Error: Invalid linked WPLM product ID: ' . $linked_wplm_product_id . ' for post ID: ' . $post_id);
+                        $linked_wplm_product_id = '';
+                    }
+                }
+            }
+            
+            // Update the linked WPLM product ID
+            if (false === update_post_meta($post_id, '_wplm_wc_linked_wplm_product_id', $linked_wplm_product_id)) {
+                error_log('WPLM Error: Failed to update linked WPLM product ID for post ID: ' . $post_id);
+            }
+            
+            // Log the changes
+            if (class_exists('WPLM_Activity_Logger')) {
+                WPLM_Activity_Logger::log(
+                    $post_id,
+                    'wplm_wc_product_data_updated',
+                    sprintf('WPLM product data updated for WooCommerce product (ID: %d)', $post_id),
+                    [
+                        'is_licensed' => $is_licensed,
+                        'linked_wplm_product_id' => $linked_wplm_product_id,
+                        'user_id' => get_current_user_id()
+                    ]
+                );
+            }
+            
+        } catch (Exception $e) {
+            error_log('WPLM Error: Exception in save_wplm_product_data for post ID ' . $post_id . ': ' . $e->getMessage());
+        }
     }
     
     /**

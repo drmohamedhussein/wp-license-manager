@@ -103,6 +103,12 @@ class WPLM_Automatic_Licenser {
 
         $file = $_FILES['wplm_product_zip'];
 
+        // Enhanced file validation
+        if ( ! $this->validate_uploaded_file( $file ) ) {
+            wp_send_json_error( [ 'message' => __( 'File validation failed. Please check the file and try again.', 'wp-license-manager' ) ] );
+            return;
+        }
+
         // Validate file type
         $file_info = wp_check_filetype( $file['name'] );
         if ( 'zip' !== $file_info['ext'] ) {
@@ -110,21 +116,57 @@ class WPLM_Automatic_Licenser {
             return;
         }
 
-        $upload_dir = wp_upload_dir();
-        $temp_dir   = $upload_dir['basedir'] . '/wplm-temp-licenser/';
-        if ( ! wp_mkdir_p( $temp_dir ) ) {
-            wp_send_json_error( [ 'message' => __( 'Could not create temporary directory.', 'wp-license-manager' ) ] );
+        // Check file size (limit to 50MB)
+        $max_file_size = 50 * 1024 * 1024; // 50MB
+        if ( $file['size'] > $max_file_size ) {
+            wp_send_json_error( [ 'message' => __( 'File size too large. Maximum allowed size is 50MB.', 'wp-license-manager' ) ] );
             return;
         }
 
-        $temp_zip_path = $temp_dir . uniqid( 'wplm_product_' ) . '.zip';
+        try {
+            $upload_dir = wp_upload_dir();
+            $temp_dir   = $this->get_secure_temp_directory( $upload_dir['basedir'] );
+            
+            if ( ! $temp_dir ) {
+                wp_send_json_error( [ 'message' => __( 'Could not create secure temporary directory.', 'wp-license-manager' ) ] );
+                return;
+            }
 
-        if ( move_uploaded_file( $file['tmp_name'], $temp_zip_path ) ) {
-            // Store the path in a transient for later processing
-            set_transient( 'wplm_processing_zip_' . get_current_user_id(), $temp_zip_path, HOUR_IN_SECONDS );
-            wp_send_json_success( [ 'message' => __( 'File uploaded successfully. Processing...', 'wp-license-manager' ) ] );
-        } else {
-            wp_send_json_error( [ 'message' => __( 'Failed to move uploaded file.', 'wp-license-manager' ) ] );
+            $temp_zip_path = $temp_dir . '/' . $this->generate_secure_filename( 'wplm_product_' ) . '.zip';
+
+            if ( move_uploaded_file( $file['tmp_name'], $temp_zip_path ) ) {
+                // Verify the uploaded file is actually a valid ZIP
+                if ( ! $this->verify_zip_file( $temp_zip_path ) ) {
+                    $this->cleanup_temp_files( $temp_zip_path );
+                    wp_send_json_error( [ 'message' => __( 'Uploaded file is not a valid ZIP archive.', 'wp-license-manager' ) ] );
+                    return;
+                }
+
+                // Store the path in a transient for later processing
+                set_transient( 'wplm_processing_zip_' . get_current_user_id(), $temp_zip_path, HOUR_IN_SECONDS );
+                
+                // Log successful upload
+                if ( class_exists( 'WPLM_Activity_Logger' ) ) {
+                    WPLM_Activity_Logger::log(
+                        0,
+                        'product_zip_uploaded',
+                        sprintf( 'Product ZIP file uploaded successfully: %s', basename( $file['name'] ) ),
+                        [
+                            'filename' => $file['name'],
+                            'filesize' => $file['size'],
+                            'user_id' => get_current_user_id()
+                        ]
+                    );
+                }
+                
+                wp_send_json_success( [ 'message' => __( 'File uploaded successfully. Processing...', 'wp-license-manager' ) ] );
+            } else {
+                wp_send_json_error( [ 'message' => __( 'Failed to move uploaded file.', 'wp-license-manager' ) ] );
+            }
+            
+        } catch ( Exception $e ) {
+            error_log( 'WPLM Error: Exception in ajax_upload_product_zip: ' . $e->getMessage() );
+            wp_send_json_error( [ 'message' => __( 'An unexpected error occurred. Please try again.', 'wp-license-manager' ) ] );
         }
     }
 
@@ -313,24 +355,209 @@ class WPLM_Automatic_Licenser {
 
     /**
      * Injects licensing code into the main plugin/theme file.
-     * This is a placeholder and will be expanded.
+     * Enhanced implementation with comprehensive error handling and security.
      *
      * @param string $main_product_path The path to the main plugin/theme directory.
      * @return true|WP_Error True on success, WP_Error on failure.
      */
     private function inject_licensing_code( $main_product_path ) {
-        $main_file = '';
-        $files = glob( $main_product_path . '/*.php' );
-        foreach ( $files as $file ) {
-            $file_contents = file_get_contents( $file );
-            if ( preg_match( '/^\s*\/\*.*?Plugin Name:.*?\*\/|^\s*\/\*.*?Theme Name:.*?\*\//ims', $file_contents ) ) {
-                $main_file = $file;
-                break;
+        try {
+            // Validate and sanitize the path
+            $main_product_path = $this->sanitize_path( $main_product_path );
+            if ( ! $this->is_valid_product_path( $main_product_path ) ) {
+                return new WP_Error( 'wplm_invalid_path', __( 'Invalid product path provided.', 'wp-license-manager' ) );
+            }
+
+            // Find the main plugin/theme file
+            $main_file = $this->find_main_product_file( $main_product_path );
+            if ( ! $main_file ) {
+                return new WP_Error( 'wplm_no_main_file', __( 'Could not find the main plugin or theme file to inject licensing code.', 'wp-license-manager' ) );
+            }
+
+            // Extract product information
+            $product_info = $this->extract_product_info( $main_file );
+            if ( is_wp_error( $product_info ) ) {
+                return $product_info;
+            }
+
+            // Generate and inject licensing client code
+            $client_injection_result = $this->inject_licensing_client( $main_product_path, $product_info );
+            if ( is_wp_error( $client_injection_result ) ) {
+                return $client_injection_result;
+            }
+
+            // Inject licensing code into main file
+            $main_file_injection_result = $this->inject_into_main_file( $main_file, $product_info );
+            if ( is_wp_error( $main_file_injection_result ) ) {
+                return $main_file_injection_result;
+            }
+
+            // Log successful injection
+            if ( class_exists( 'WPLM_Activity_Logger' ) ) {
+                WPLM_Activity_Logger::log(
+                    0,
+                    'licensing_code_injected',
+                    sprintf( 'Licensing code successfully injected into %s: %s', $product_info['type'], $product_info['name'] ),
+                    [
+                        'product_path' => $main_product_path,
+                        'product_name' => $product_info['name'],
+                        'product_slug' => $product_info['slug'],
+                        'product_type' => $product_info['type']
+                    ]
+                );
+            }
+
+            return true;
+
+        } catch ( Exception $e ) {
+            error_log( 'WPLM Error: Exception in inject_licensing_code: ' . $e->getMessage() );
+            return new WP_Error( 'wplm_injection_exception', __( 'An unexpected error occurred during code injection.', 'wp-license-manager' ) );
+        }
+    }
+
+    /**
+     * Validate uploaded file for security
+     */
+    private function validate_uploaded_file( $file ) {
+        // Check for upload errors
+        if ( $file['error'] !== UPLOAD_ERR_OK ) {
+            error_log( 'WPLM Error: File upload error: ' . $file['error'] );
+            return false;
+        }
+
+        // Check if file was uploaded via HTTP POST
+        if ( ! is_uploaded_file( $file['tmp_name'] ) ) {
+            error_log( 'WPLM Error: File was not uploaded via HTTP POST' );
+            return false;
+        }
+
+        // Validate file name
+        $filename = sanitize_file_name( $file['name'] );
+        if ( empty( $filename ) || $filename !== $file['name'] ) {
+            error_log( 'WPLM Error: Invalid filename detected' );
+            return false;
+        }
+
+        // Check for potentially dangerous file extensions
+        $dangerous_extensions = [ 'php', 'php3', 'php4', 'php5', 'phtml', 'exe', 'bat', 'cmd', 'sh' ];
+        $file_extension = strtolower( pathinfo( $file['name'], PATHINFO_EXTENSION ) );
+        if ( in_array( $file_extension, $dangerous_extensions ) ) {
+            error_log( 'WPLM Error: Dangerous file extension detected: ' . $file_extension );
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Get secure temporary directory
+     */
+    private function get_secure_temp_directory( $base_dir ) {
+        $temp_dir = $base_dir . '/wplm-temp-licenser/' . uniqid( 'wplm_' ) . '/';
+        
+        if ( ! wp_mkdir_p( $temp_dir ) ) {
+            return false;
+        }
+
+        // Set restrictive permissions
+        chmod( $temp_dir, 0755 );
+
+        // Create .htaccess to prevent direct access
+        $htaccess_content = "Order deny,allow\nDeny from all";
+        file_put_contents( $temp_dir . '.htaccess', $htaccess_content );
+
+        return $temp_dir;
+    }
+
+    /**
+     * Generate secure filename
+     */
+    private function generate_secure_filename( $prefix ) {
+        return $prefix . wp_generate_password( 16, false );
+    }
+
+    /**
+     * Verify ZIP file integrity
+     */
+    private function verify_zip_file( $file_path ) {
+        if ( ! file_exists( $file_path ) ) {
+            return false;
+        }
+
+        $zip = new ZipArchive();
+        if ( $zip->open( $file_path ) !== true ) {
+            return false;
+        }
+
+        // Check for potentially dangerous files inside ZIP
+        $dangerous_files = [ '.php', '.php3', '.php4', '.php5', '.phtml', '.exe', '.bat', '.cmd', '.sh' ];
+        for ( $i = 0; $i < $zip->numFiles; $i++ ) {
+            $filename = $zip->getNameIndex( $i );
+            foreach ( $dangerous_files as $dangerous_ext ) {
+                if ( strpos( $filename, $dangerous_ext ) !== false ) {
+                    $zip->close();
+                    return false;
+                }
             }
         }
 
-        if ( empty( $main_file ) ) {
-            return new WP_Error( 'wplm_no_main_file', __( 'Could not find the main plugin or theme file to inject licensing code.', 'wp-license-manager' ) );
+        $zip->close();
+        return true;
+    }
+
+    /**
+     * Sanitize file path
+     */
+    private function sanitize_path( $path ) {
+        $path = realpath( $path );
+        if ( $path === false ) {
+            return false;
+        }
+
+        // Ensure path is within allowed directories
+        $upload_dir = wp_upload_dir();
+        $allowed_base = realpath( $upload_dir['basedir'] );
+        
+        if ( strpos( $path, $allowed_base ) !== 0 ) {
+            return false;
+        }
+
+        return $path;
+    }
+
+    /**
+     * Validate product path
+     */
+    private function is_valid_product_path( $path ) {
+        if ( ! $path || ! is_dir( $path ) ) {
+            return false;
+        }
+
+        // Check if directory contains PHP files
+        $php_files = glob( $path . '/*.php' );
+        return ! empty( $php_files );
+    }
+
+    /**
+     * Find main product file
+     */
+    private function find_main_product_file( $product_path ) {
+        $files = glob( $product_path . '/*.php' );
+        foreach ( $files as $file ) {
+            $file_contents = file_get_contents( $file );
+            if ( preg_match( '/^\s*\/\*.*?Plugin Name:.*?\*\/|^\s*\/\*.*?Theme Name:.*?\*\//ims', $file_contents ) ) {
+                return $file;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Extract product information
+     */
+    private function extract_product_info( $main_file ) {
+        if ( ! file_exists( $main_file ) ) {
+            return new WP_Error( 'wplm_file_not_found', __( 'Main product file not found.', 'wp-license-manager' ) );
         }
 
         $plugin_data = get_file_data( $main_file, [
@@ -339,37 +566,147 @@ class WPLM_Automatic_Licenser {
         ] );
 
         $product_name = $plugin_data['Plugin Name'] ?: $plugin_data['Theme Name'];
+        if ( empty( $product_name ) ) {
+            return new WP_Error( 'wplm_no_product_name', __( 'Could not extract product name from file headers.', 'wp-license-manager' ) );
+        }
+
         $product_slug = sanitize_title( $product_name );
+        $product_type = ! empty( $plugin_data['Plugin Name'] ) ? 'plugin' : 'theme';
 
-        // Define WPLM API URL (placeholder, should come from settings)
-        $wplm_api_url = get_option( 'wplm_api_url', admin_url('admin-ajax.php') );
+        return [
+            'name' => $product_name,
+            'slug' => $product_slug,
+            'type' => $product_type,
+            'file' => $main_file
+        ];
+    }
 
-        $client_template_path = WPLM_PLUGIN_DIR . 'templates/wplm-licensing-client-template.php';
-        if ( ! file_exists( $client_template_path ) ) {
-            return new WP_Error( 'wplm_template_missing', __( 'Licensing client template file is missing.', 'wp-license-manager' ) );
+    /**
+     * Inject licensing client code
+     */
+    private function inject_licensing_client( $product_path, $product_info ) {
+        // Get WPLM API URL from settings
+        $wplm_api_url = get_option( 'wplm_api_url', home_url( '/wp-json/wplm/v2/' ) );
+
+        // Try to load template from multiple locations
+        $template_locations = [
+            WPLM_PLUGIN_DIR . 'templates/wplm-licensing-client-template.php',
+            WPLM_PLUGIN_DIR . 'includes/wplm-license-client-template.php',
+            plugin_dir_path( __FILE__ ) . '../templates/wplm-licensing-client-template.php'
+        ];
+
+        $client_template_path = false;
+        foreach ( $template_locations as $location ) {
+            if ( file_exists( $location ) ) {
+                $client_template_path = $location;
+                break;
+            }
+        }
+
+        if ( ! $client_template_path ) {
+            // Create a basic template if none exists
+            $client_template_path = $this->create_basic_licensing_template( $product_path );
+            if ( ! $client_template_path ) {
+                return new WP_Error( 'wplm_template_creation_failed', __( 'Failed to create licensing template.', 'wp-license-manager' ) );
+            }
         }
 
         $client_code = file_get_contents( $client_template_path );
         $client_code = str_replace( '{{WPLM_API_URL}}', esc_url( $wplm_api_url ), $client_code );
-        $client_code = str_replace( '{{WPLM_PRODUCT_SLUG}}', esc_attr( $product_slug ), $client_code );
+        $client_code = str_replace( '{{WPLM_PRODUCT_SLUG}}', esc_attr( $product_info['slug'] ), $client_code );
+        $client_code = str_replace( '{{WPLM_PRODUCT_NAME}}', esc_attr( $product_info['name'] ), $client_code );
         
         $client_file_name = 'wplm-licensing-client.php';
-        $client_file_path = $main_product_path . '/' . $client_file_name;
+        $client_file_path = $product_path . '/' . $client_file_name;
         
         if ( ! file_put_contents( $client_file_path, $client_code ) ) {
             return new WP_Error( 'wplm_template_write_failed', __( 'Failed to write licensing client file.', 'wp-license-manager' ) );
         }
 
-        // Inject into main plugin file
-        $main_file_contents = file_get_contents( $main_file );
-        $injection_point    = '<?php';
-        $injection_code     = "\nif ( ! defined( 'ABSPATH' ) ) { exit; }\nrequire_once __DIR__ . '/{$client_file_name}';\nadd_action( 'plugins_loaded', 'wplm_fs_init' ); // Assuming wplm_fs_init is the main function in client.php\n";
+        return true;
+    }
 
-        if ( strpos( $main_file_contents, $injection_code ) === false ) { // Avoid duplicate injection
-            $main_file_contents = str_replace( $injection_point, $injection_point . $injection_code, $main_file_contents );
-            if ( ! file_put_contents( $main_file, $main_file_contents ) ) {
-                return new WP_Error( 'wplm_main_file_write_failed', __( 'Failed to inject code into main plugin/theme file.', 'wp-license-manager' ) );
-            }
+    /**
+     * Create basic licensing template if none exists
+     */
+    private function create_basic_licensing_template( $product_path ) {
+        $template_content = '<?php
+/**
+ * WPLM Licensing Client - Auto-generated
+ * This file was automatically generated by the WPLM Automatic Licenser
+ */
+
+if ( ! defined( "ABSPATH" ) ) {
+    exit;
+}
+
+// Basic licensing check
+function wplm_validate_license( $license_key ) {
+    $api_url = "{{WPLM_API_URL}}";
+    $product_slug = "{{WPLM_PRODUCT_SLUG}}";
+    
+    $response = wp_remote_post( $api_url . "validate", [
+        "body" => [
+            "license_key" => $license_key,
+            "domain" => $_SERVER["HTTP_HOST"],
+            "product_slug" => $product_slug
+        ]
+    ] );
+    
+    if ( is_wp_error( $response ) ) {
+        return false;
+    }
+    
+    $body = wp_remote_retrieve_body( $response );
+    $data = json_decode( $body, true );
+    
+    return isset( $data["success"] ) && $data["success"] === true;
+}
+
+// Initialize licensing
+function wplm_fs_init() {
+    // Add your licensing logic here
+    add_action( "admin_notices", "wplm_admin_notice" );
+}
+
+function wplm_admin_notice() {
+    echo "<div class=\"notice notice-info\"><p>This product is licensed through WPLM.</p></div>";
+}
+';
+
+        $template_path = $product_path . '/wplm-licensing-client-template.php';
+        if ( file_put_contents( $template_path, $template_content ) ) {
+            return $template_path;
+        }
+
+        return false;
+    }
+
+    /**
+     * Inject licensing code into main file
+     */
+    private function inject_into_main_file( $main_file, $product_info ) {
+        $main_file_contents = file_get_contents( $main_file );
+        if ( $main_file_contents === false ) {
+            return new WP_Error( 'wplm_file_read_failed', __( 'Failed to read main product file.', 'wp-license-manager' ) );
+        }
+
+        $injection_point = '<?php';
+        $client_file_name = 'wplm-licensing-client.php';
+        
+        // Create injection code
+        $injection_code = "\nif ( ! defined( 'ABSPATH' ) ) { exit; }\nrequire_once __DIR__ . '/{$client_file_name}';\nadd_action( 'plugins_loaded', 'wplm_fs_init' );\n";
+
+        // Check if already injected
+        if ( strpos( $main_file_contents, $client_file_name ) !== false ) {
+            return true; // Already injected
+        }
+
+        // Inject the code
+        $new_contents = str_replace( $injection_point, $injection_point . $injection_code, $main_file_contents );
+        
+        if ( ! file_put_contents( $main_file, $new_contents ) ) {
+            return new WP_Error( 'wplm_main_file_write_failed', __( 'Failed to inject code into main product file.', 'wp-license-manager' ) );
         }
 
         return true;
