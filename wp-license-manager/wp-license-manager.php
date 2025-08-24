@@ -223,12 +223,30 @@ final class WP_License_Manager {
                 new WPLM_Customer_Management_System(); // Initialize customer management system
             }
             
-            if (class_exists('WPLM_Enhanced_Admin_Manager')) {
-                new WPLM_Enhanced_Admin_Manager(); // Initialize enhanced admin interface (main menu interface)
+            // Initialize enhanced admin interface (split into focused classes)
+            if (class_exists('WPLM_Enhanced_Admin_Manager_Core')) {
+                new WPLM_Enhanced_Admin_Manager_Core(); // Core functionality, dependencies, settings
             }
             
-            if (class_exists('WPLM_Advanced_Licensing')) {
-                new WPLM_Advanced_Licensing(); // Initialize advanced licensing system
+            if (class_exists('WPLM_Enhanced_Admin_Manager_UI')) {
+                new WPLM_Enhanced_Admin_Manager_UI(); // Admin menu, dashboard, settings UI
+            }
+            
+            if (class_exists('WPLM_Enhanced_Admin_Manager_AJAX')) {
+                new WPLM_Enhanced_Admin_Manager_AJAX(); // AJAX handlers, statistics, license generation
+            }
+            
+            // Initialize advanced licensing system (split into focused classes)
+            if (class_exists('WPLM_Advanced_Licensing_Core')) {
+                new WPLM_Advanced_Licensing_Core(); // Core functionality, database, security
+            }
+            
+            if (class_exists('WPLM_Advanced_Licensing_API')) {
+                new WPLM_Advanced_Licensing_API(); // REST API endpoints, encryption
+            }
+            
+            if (class_exists('WPLM_Advanced_Licensing_Admin')) {
+                new WPLM_Advanced_Licensing_Admin(); // Admin interface, meta boxes
             }
             
             if (class_exists('WPLM_Enhanced_API_Manager')) {
