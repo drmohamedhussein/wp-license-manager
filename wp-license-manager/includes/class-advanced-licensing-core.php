@@ -229,8 +229,8 @@ class WPLM_Advanced_Licensing_Core {
     }
 
     /**
-     * Register REST API endpoints
-
+     * Get license information
+     */
     private function get_license_info($license_key) {
         // Sanitize license key
         $sanitized_license_key = sanitize_text_field($license_key);

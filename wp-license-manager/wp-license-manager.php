@@ -86,7 +86,8 @@ final class WP_License_Manager {
         // Core required files
         $core_files = [
             'includes/class-cpt-manager.php',
-            'includes/class-admin-manager.php',
+            'includes/class-admin-manager-meta-boxes.php',
+            'includes/class-admin-manager-ajax.php',
             'includes/class-api-manager.php',
             'includes/cli.php',
         ];
@@ -198,10 +199,17 @@ final class WP_License_Manager {
                 $this->log_error('WPLM_CPT_Manager class not found');
             }
             
-            if (class_exists('WPLM_Admin_Manager')) {
-                new WPLM_Admin_Manager(); // Initialize admin manager (meta boxes and AJAX only - no menu)
+            // Initialize admin manager components (split into focused classes)
+            if (class_exists('WPLM_Admin_Manager_Meta_Boxes')) {
+                new WPLM_Admin_Manager_Meta_Boxes(); // Initialize meta boxes and basic admin functionality
             } else {
-                $this->log_error('WPLM_Admin_Manager class not found');
+                $this->log_error('WPLM_Admin_Manager_Meta_Boxes class not found');
+            }
+            
+            if (class_exists('WPLM_Admin_Manager_AJAX')) {
+                new WPLM_Admin_Manager_AJAX(); // Initialize AJAX handlers
+            } else {
+                $this->log_error('WPLM_Admin_Manager_AJAX class not found');
             }
             
             if (class_exists('WPLM_API_Manager')) {
