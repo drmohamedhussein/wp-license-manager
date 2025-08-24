@@ -202,81 +202,81 @@ final class WP_License_Manager {
                 $this->log_error('WPLM_API_Manager class not found');
             }
 
-        // Initialize optional enhanced components
-        if (class_exists('WPLM_Notification_Manager')) {
-            new WPLM_Notification_Manager(); // Initialize notification manager
-        }
-        
-        if (class_exists('WPLM_Activity_Logger')) {
-            new WPLM_Activity_Logger(); // Initialize activity logger
-        }
-        
-        if (class_exists('WPLM_Subscription_Manager')) {
-            new WPLM_Subscription_Manager(); // Initialize subscription manager
-        }
-        
-        if (class_exists('WPLM_Built_In_Subscription_System')) {
-            new WPLM_Built_In_Subscription_System(); // Initialize built-in subscription system
-        }
-        
-        if (class_exists('WPLM_Customer_Management_System')) {
-            new WPLM_Customer_Management_System(); // Initialize customer management system
-        }
-        
-        if (class_exists('WPLM_Enhanced_Admin_Manager')) {
-            new WPLM_Enhanced_Admin_Manager(); // Initialize enhanced admin interface (main menu interface)
-        }
-        
-        if (class_exists('WPLM_Advanced_Licensing')) {
-            new WPLM_Advanced_Licensing(); // Initialize advanced licensing system
-        }
-        
-        if (class_exists('WPLM_Enhanced_API_Manager')) {
-            new WPLM_Enhanced_API_Manager(); // Initialize enhanced API manager
-        }
-        
-        if (class_exists('WPLM_Import_Export_Manager')) {
-            new WPLM_Import_Export_Manager(); // Initialize import/export manager
-        }
-        
-        if (class_exists('WPLM_Email_Notification_System')) {
-            new WPLM_Email_Notification_System(); // Initialize email notification system
-        }
-        
-        if (class_exists('WPLM_Bulk_Operations_Manager')) {
-            new WPLM_Bulk_Operations_Manager(); // Initialize bulk operations manager
-        }
-        
-        if (class_exists('WPLM_REST_API_Manager')) {
-            new WPLM_REST_API_Manager(); // Initialize REST API manager
-        }
-        
-        if (class_exists('WPLM_Analytics_Dashboard')) {
-            new WPLM_Analytics_Dashboard(); // Initialize analytics dashboard
-        }
-        
-        if (class_exists('WPLM_Automatic_Licenser')) {
-            new WPLM_Automatic_Licenser(); // Initialize automatic licenser system
-        }
-        
-        if (class_exists('WPLM_Enhanced_Digital_Downloads')) {
-            new WPLM_Enhanced_Digital_Downloads(); // Initialize enhanced digital downloads system
-        }
+            // Initialize optional enhanced components
+            if (class_exists('WPLM_Notification_Manager')) {
+                new WPLM_Notification_Manager(); // Initialize notification manager
+            }
+            
+            if (class_exists('WPLM_Activity_Logger')) {
+                new WPLM_Activity_Logger(); // Initialize activity logger
+            }
+            
+            if (class_exists('WPLM_Subscription_Manager')) {
+                new WPLM_Subscription_Manager(); // Initialize subscription manager
+            }
+            
+            if (class_exists('WPLM_Built_In_Subscription_System')) {
+                new WPLM_Built_In_Subscription_System(); // Initialize built-in subscription system
+            }
+            
+            if (class_exists('WPLM_Customer_Management_System')) {
+                new WPLM_Customer_Management_System(); // Initialize customer management system
+            }
+            
+            if (class_exists('WPLM_Enhanced_Admin_Manager')) {
+                new WPLM_Enhanced_Admin_Manager(); // Initialize enhanced admin interface (main menu interface)
+            }
+            
+            if (class_exists('WPLM_Advanced_Licensing')) {
+                new WPLM_Advanced_Licensing(); // Initialize advanced licensing system
+            }
+            
+            if (class_exists('WPLM_Enhanced_API_Manager')) {
+                new WPLM_Enhanced_API_Manager(); // Initialize enhanced API manager
+            }
+            
+            if (class_exists('WPLM_Import_Export_Manager')) {
+                new WPLM_Import_Export_Manager(); // Initialize import/export manager
+            }
+            
+            if (class_exists('WPLM_Email_Notification_System')) {
+                new WPLM_Email_Notification_System(); // Initialize email notification system
+            }
+            
+            if (class_exists('WPLM_Bulk_Operations_Manager')) {
+                new WPLM_Bulk_Operations_Manager(); // Initialize bulk operations manager
+            }
+            
+            if (class_exists('WPLM_REST_API_Manager')) {
+                new WPLM_REST_API_Manager(); // Initialize REST API manager
+            }
+            
+            if (class_exists('WPLM_Analytics_Dashboard')) {
+                new WPLM_Analytics_Dashboard(); // Initialize analytics dashboard
+            }
+            
+            if (class_exists('WPLM_Automatic_Licenser')) {
+                new WPLM_Automatic_Licenser(); // Initialize automatic licenser system
+            }
+            
+            if (class_exists('WPLM_Enhanced_Digital_Downloads')) {
+                new WPLM_Enhanced_Digital_Downloads(); // Initialize enhanced digital downloads system
+            }
 
-        // Initialize WooCommerce integration if WooCommerce is active
-        if (class_exists('WooCommerce')) {
-            if (class_exists('WPLM_WooCommerce_Integration')) {
-                new WPLM_WooCommerce_Integration();
+            // Initialize WooCommerce integration if WooCommerce is active
+            if (class_exists('WooCommerce')) {
+                if (class_exists('WPLM_WooCommerce_Integration')) {
+                    new WPLM_WooCommerce_Integration();
+                }
+                
+                if (class_exists('WPLM_WooCommerce_Variations')) {
+                    new WPLM_WooCommerce_Variations();
+                }
+                
+                if (class_exists('WPLM_WooCommerce_Sync')) {
+                    new WPLM_WooCommerce_Sync();
+                }
             }
-            
-            if (class_exists('WPLM_WooCommerce_Variations')) {
-                new WPLM_WooCommerce_Variations();
-            }
-            
-            if (class_exists('WPLM_WooCommerce_Sync')) {
-                new WPLM_WooCommerce_Sync();
-            }
-        }
         } catch (Exception $e) {
             $this->log_error('Plugin initialization failed: ' . $e->getMessage());
             add_action('admin_notices', function() use ($e) {
