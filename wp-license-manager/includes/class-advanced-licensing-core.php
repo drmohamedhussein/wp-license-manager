@@ -632,8 +632,8 @@ class WPLM_Advanced_Licensing_Core {
             'wplm_license_type_meta',
             __('License Type Settings', 'wp-license-manager'),
             [$this, 'render_license_type_meta_box'],
-            'wplm_license_type',
-            'normal',
+            'wplm_license',
+            'side',
             'high'
         );
     }
