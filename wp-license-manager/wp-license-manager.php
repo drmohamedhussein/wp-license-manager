@@ -555,26 +555,6 @@ final class WP_License_Manager {
             KEY status (status)
         ) $charset_collate;";
         
-        // License types table
-        $table_license_types = $wpdb->prefix . 'wplm_license_types';
-        $sql_license_types = "CREATE TABLE $table_license_types (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            name varchar(255) NOT NULL,
-            slug varchar(255) NOT NULL,
-            description text,
-            features longtext,
-            price decimal(10,2) DEFAULT 0.00,
-            duration int(11) DEFAULT NULL,
-            duration_unit varchar(20) DEFAULT 'days',
-            activation_limit int(11) DEFAULT 1,
-            status varchar(50) NOT NULL DEFAULT 'active',
-            created_at datetime DEFAULT CURRENT_TIMESTAMP,
-            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
-            KEY slug (slug),
-            KEY status (status)
-        ) $charset_collate;";
-        
         // Activity logs table
         $table_activity_logs = $wpdb->prefix . 'wplm_activity_logs';
         $sql_activity_logs = "CREATE TABLE $table_activity_logs (
@@ -604,7 +584,6 @@ final class WP_License_Manager {
         dbDelta($sql_subscriptions);
         dbDelta($sql_license_usage);
         dbDelta($sql_security_incidents);
-        dbDelta($sql_license_types);
         dbDelta($sql_activity_logs);
     }
 
@@ -630,57 +609,15 @@ final class WP_License_Manager {
         
         update_option('wplm_settings', $default_settings);
         
-        // Set default license types
+        // Store default license type presets (option only) for UI bootstrap
         $default_license_types = [
-            [
-                'name' => 'Personal',
-                'slug' => 'personal-license',
-                'description' => 'Personal use license',
-                'features' => ['Single domain', 'Basic support'],
-                'price' => 29.99,
-                'duration' => 365,
-                'duration_unit' => 'days',
-                'activation_limit' => 1
-            ],
-            [
-                'name' => 'Business',
-                'slug' => 'business-license',
-                'description' => 'Business use license',
-                'features' => ['Up to 5 domains', 'Priority support', 'Updates'],
-                'price' => 99.99,
-                'duration' => 365,
-                'duration_unit' => 'days',
-                'activation_limit' => 5
-            ],
-            [
-                'name' => 'Developer',
-                'slug' => 'developer-license',
-                'description' => 'Developer license',
-                'features' => ['Unlimited domains', 'Priority support', 'Updates', 'Source code'],
-                'price' => 199.99,
-                'duration' => 365,
-                'duration_unit' => 'days',
-                'activation_limit' => -1
-            ],
-            [
-                'name' => 'Lifetime',
-                'slug' => 'lifetime-license',
-                'description' => 'Lifetime license',
-                'features' => ['Unlimited domains', 'Lifetime support', 'Lifetime updates'],
-                'price' => 499.99,
-                'duration' => null,
-                'duration_unit' => 'lifetime',
-                'activation_limit' => -1
-            ]
+            ['name' => 'Personal', 'slug' => 'personal', 'activation_limit' => 1],
+            ['name' => 'Business', 'slug' => 'business', 'activation_limit' => 5],
+            ['name' => 'Developer', 'slug' => 'developer', 'activation_limit' => -1],
+            ['name' => 'Lifetime', 'slug' => 'lifetime', 'activation_limit' => -1],
         ];
-        
-        // Check if license types already exist to avoid duplicates
-        $existing_types = get_option('wplm_license_types', []);
-        if (empty($existing_types)) {
+        if (empty(get_option('wplm_license_types'))) {
             update_option('wplm_license_types', $default_license_types);
-            
-            // Insert default license types into database table
-            $this->insert_default_license_types($default_license_types);
         }
     }
 
@@ -714,37 +651,7 @@ final class WP_License_Manager {
         }
     }
 
-    /**
-     * Insert default license types into database
-     */
-    private function insert_default_license_types($license_types) {
-        global $wpdb;
-        
-        $table_name = $wpdb->prefix . 'wplm_license_types';
-        
-        foreach ($license_types as $license_type) {
-            $wpdb->insert(
-                $table_name,
-                [
-                    'name' => $license_type['name'],
-                    'slug' => $license_type['slug'],
-                    'description' => $license_type['description'],
-                    'features' => json_encode($license_type['features']),
-                    'price' => $license_type['price'],
-                    'duration' => $license_type['duration'],
-                    'duration_unit' => $license_type['duration_unit'],
-                    'activation_limit' => $license_type['activation_limit'],
-                    'status' => 'active'
-                ],
-                [
-                    '%s', '%s', '%s', '%s', '%f', '%d', '%s', '%d', '%s'
-                ]
-            );
-        }
-        
-        // Now add unique constraint after data is inserted
-        $wpdb->query("ALTER TABLE $table_name ADD UNIQUE KEY `slug` (`slug`)");
-    }
+    // (Removed) insert_default_license_types: license types are owned by Advanced Licensing Core
 
     /**
      * Send expiry notification.
