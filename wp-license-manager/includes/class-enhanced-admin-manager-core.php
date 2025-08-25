@@ -24,33 +24,8 @@ class WPLM_Enhanced_Admin_Manager_Core {
         add_action('admin_init', [$this, 'register_settings']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
         
-        // Dashboard and stats
-        add_action('wp_ajax_wplm_dashboard_stats', [$this, 'ajax_dashboard_stats']);
-        
-        // DataTables AJAX handlers
-        add_action('wp_ajax_wplm_get_licenses', [$this, 'ajax_get_licenses']);
-        add_action('wp_ajax_wplm_get_products', [$this, 'ajax_get_products']);
-        add_action('wp_ajax_wplm_get_customers', [$this, 'ajax_get_customers']);
-        add_action('wp_ajax_wplm_get_subscriptions', [$this, 'ajax_get_subscriptions']);
-        add_action('wp_ajax_wplm_get_activity_logs', [$this, 'ajax_get_activity_logs']);
-        
-        // Customer management
-        add_action('wp_ajax_wplm_add_customer', [$this, 'ajax_add_customer']);
-        add_action('wp_ajax_wplm_edit_customer', [$this, 'ajax_edit_customer']);
-        add_action('wp_ajax_wplm_delete_customer', [$this, 'ajax_delete_customer']);
-        
-        // Subscription management
-        add_action('wp_ajax_wplm_add_subscription', [$this, 'ajax_add_subscription']);
-        add_action('wp_ajax_wplm_edit_subscription', [$this, 'ajax_edit_subscription']);
-        add_action('wp_ajax_wplm_delete_subscription', [$this, 'ajax_delete_subscription']);
-        
-        // License generation
-        add_action('wp_ajax_wplm_generate_license_key', [$this, 'ajax_generate_license_key']);
-        add_action('wp_ajax_wplm_generate_api_key', [$this, 'ajax_generate_api_key']);
-        
-        // Other actions
-        add_action('wp_ajax_wplm_toggle_status', [$this, 'ajax_toggle_status']);
-        add_action('wp_ajax_wplm_bulk_action', [$this, 'ajax_bulk_action']);
+        // AJAX handlers are now managed by WPLM_Enhanced_Admin_Manager_AJAX class
+        // to avoid conflicts and maintain separation of concerns
     }
 
     /**
