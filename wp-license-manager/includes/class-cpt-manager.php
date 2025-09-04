@@ -10,6 +10,10 @@ class WPLM_CPT_Manager {
 
     public function __construct() {
         add_action('init', [$this, 'register_post_types']);
+        add_filter('bulk_actions-edit-wplm_product', [$this, 'add_bulk_actions']);
+        add_filter('bulk_actions-edit-wplm_license', [$this, 'add_bulk_actions']);
+        add_filter('bulk_actions-edit-wplm_subscription', [$this, 'add_bulk_actions']);
+        add_filter('bulk_actions-edit-wplm_order', [$this, 'add_bulk_actions']);
     }
 
     /**
@@ -30,6 +34,8 @@ class WPLM_CPT_Manager {
             'view_item'             => __('View License', 'wp-license-manager'),
             'search_items'          => __('Search License', 'wp-license-manager'),
         ];
+        // Show native CPT menus by default so Orders/Customers are visible immediately
+        $show_native = (bool) get_option('wplm_show_native_cpt_menus', true);
         $license_args = [
             'label'                 => __('License', 'wp-license-manager'),
             'description'           => __('License Keys', 'wp-license-manager'),
@@ -38,26 +44,17 @@ class WPLM_CPT_Manager {
             'hierarchical'          => false,
             'public'                => false,
             'show_ui'               => true,
-            'show_in_menu'          => true,
+            // Ensure Licenses provides the parent native menu
+            'show_in_menu'          => $show_native ? true : false,
             'menu_position'         => 20,
             'menu_icon'             => 'dashicons-lock',
-            'show_in_admin_bar'     => true,
+            'show_in_admin_bar'     => $show_native ? true : false,
             'show_in_nav_menus'     => false,
             'can_export'            => true,
             'has_archive'           => false,
             'exclude_from_search'   => true,
             'publicly_queryable'    => false,
-            'capability_type'       => 'wplm_license', // Use custom capability type
-            'capabilities'          => [
-                'edit_post'          => 'edit_wplm_license',
-                'read_post'          => 'read_wplm_license',
-                'delete_post'        => 'delete_wplm_license',
-                'edit_posts'         => 'edit_wplm_licenses',
-                'edit_others_posts'  => 'edit_others_wplm_licenses',
-                'publish_posts'      => 'publish_wplm_licenses',
-                'read_private_posts' => 'read_private_wplm_licenses',
-                'create_posts'       => 'create_wplm_licenses',
-            ],
+            'capability_type'       => 'post', // Use standard post capabilities for better compatibility
             'map_meta_cap'          => true, // Map WordPress meta capabilities
             'show_in_rest'          => false,
         ];
@@ -83,26 +80,26 @@ class WPLM_CPT_Manager {
         $product_args = [
             'label'                 => __('Product', 'wp-license-manager'),
             'labels'                => $product_labels,
-            'supports'              => ['title'],
+            'supports'              => ['title', 'editor', 'thumbnail', 'excerpt'],
             'hierarchical'          => false,
             'public'                => false,
             'show_ui'               => true,
-            'show_in_menu'          => 'edit.php?post_type=wplm_license', // Sub-menu of Licenses
-            'capability_type'       => 'wplm_product', // Use custom capability type
-            'capabilities'          => [
-                'edit_post'          => 'edit_wplm_product',
-                'read_post'          => 'read_wplm_product',
-                'delete_post'        => 'delete_wplm_product',
-                'edit_posts'         => 'edit_wplm_products',
-                'edit_others_posts'  => 'edit_others_wplm_products',
-                'publish_posts'      => 'publish_wplm_products',
-                'read_private_posts' => 'read_private_wplm_products',
-                'create_posts'       => 'create_wplm_products',
-            ],
-            'map_meta_cap'          => true, // Map WordPress meta capabilities
-            'show_in_rest'          => false,
+            // Place Products under Licenses native CPT menu like other WPLM post types
+            'show_in_menu'          => $show_native ? 'edit.php?post_type=wplm_license' : false,
+            'show_in_admin_bar'     => $show_native ? true : false,
+            'show_in_nav_menus'     => false,
+            'can_export'            => true,
+            'has_archive'           => false,
+            'exclude_from_search'   => true,
+            'publicly_queryable'    => false,
+            'capability_type'       => 'post', // Use standard post capabilities for better compatibility
+            'map_meta_cap'          => true,
+            'show_in_rest'          => true, // Enable Gutenberg support
         ];
         register_post_type('wplm_product', $product_args);
+
+        // Add filter to handle slug conflicts for WPLM products
+        add_filter('wp_unique_post_slug', [$this, 'handle_wplm_product_slug'], 10, 6);
 
         // Register Subscription Post Type
         $subscription_labels = [
@@ -129,19 +126,103 @@ class WPLM_CPT_Manager {
             'hierarchical'          => false,
             'public'                => false,
             'show_ui'               => true,
-            'show_in_menu'          => 'edit.php?post_type=wplm_license',
+            // Place Subscriptions under Licenses native CPT menu
+            'show_in_menu'          => $show_native ? 'edit.php?post_type=wplm_license' : false,
             'menu_position'         => 21,
-            'show_in_admin_bar'     => false,
+            'show_in_admin_bar'     => $show_native ? true : false,
             'show_in_nav_menus'     => false,
             'can_export'            => true,
             'has_archive'           => false,
             'exclude_from_search'   => true,
             'publicly_queryable'    => false,
-            'capability_type'       => 'wplm_license', // Reuse license capabilities
+            'capability_type'       => 'post', // Use standard post capabilities for better compatibility
             'map_meta_cap'          => true,
             'show_in_rest'          => false,
         ];
         register_post_type('wplm_subscription', $subscription_args);
+
+        // Register Customer Post Type
+        $customer_labels = [
+            'name'                  => _x('Customers', 'Post Type General Name', 'wp-license-manager'),
+            'singular_name'         => _x('Customer', 'Post Type Singular Name', 'wp-license-manager'),
+            'menu_name'             => __('Customers', 'wp-license-manager'),
+            'name_admin_bar'        => __('Customer', 'wp-license-manager'),
+            'add_new_item'          => __('Add New Customer', 'wp-license-manager'),
+            'add_new'               => __('Add New', 'wp-license-manager'),
+            'new_item'              => __('New Customer', 'wp-license-manager'),
+            'edit_item'             => __('Edit Customer', 'wp-license-manager'),
+            'update_item'           => __('Update Customer', 'wp-license-manager'),
+            'view_item'             => __('View Customer', 'wp-license-manager'),
+            'search_items'          => __('Search Customers', 'wp-license-manager'),
+            'not_found'             => __('No customers found', 'wp-license-manager'),
+            'not_found_in_trash'    => __('No customers found in Trash', 'wp-license-manager'),
+            'all_items'             => __('All Customers', 'wp-license-manager'),
+        ];
+
+        $customer_args = [
+            'label'                 => __('Customer', 'wp-license-manager'),
+            'description'           => __('WPLM Customers', 'wp-license-manager'),
+            'labels'                => $customer_labels,
+            'supports'              => ['title'],
+            'hierarchical'          => false,
+            'public'                => false,
+            'show_ui'               => true,
+            // Place Customers under Licenses native CPT menu
+            'show_in_menu'          => $show_native ? 'edit.php?post_type=wplm_license' : false,
+            'menu_position'         => 19,
+            'show_in_admin_bar'     => $show_native ? true : false,
+            'show_in_nav_menus'     => false,
+            'can_export'            => true,
+            'has_archive'           => false,
+            'exclude_from_search'   => true,
+            'publicly_queryable'    => false,
+            // Use standard post capabilities so admins/editor roles can see and edit
+            'capability_type'       => 'post',
+            'map_meta_cap'          => true,
+            'show_in_rest'          => false,
+        ];
+        register_post_type('wplm_customer', $customer_args);
+
+        // Register Order Post Type
+        $order_labels = [
+            'name'                  => _x('Orders', 'Post Type General Name', 'wp-license-manager'),
+            'singular_name'         => _x('Order', 'Post Type Singular Name', 'wp-license-manager'),
+            'menu_name'             => __('Orders', 'wp-license-manager'),
+            'name_admin_bar'        => __('Order', 'wp-license-manager'),
+            'add_new_item'          => __('Add New Order', 'wp-license-manager'),
+            'add_new'               => __('Add New', 'wp-license-manager'),
+            'new_item'              => __('New Order', 'wp-license-manager'),
+            'edit_item'             => __('Edit Order', 'wp-license-manager'),
+            'update_item'           => __('Update Order', 'wp-license-manager'),
+            'view_item'             => __('View Order', 'wp-license-manager'),
+            'search_items'          => __('Search Orders', 'wp-license-manager'),
+            'not_found'             => __('No orders found', 'wp-license-manager'),
+            'not_found_in_trash'    => __('No orders found in Trash', 'wp-license-manager'),
+            'all_items'             => __('All Orders', 'wp-license-manager'),
+        ];
+        $order_args = [
+            'label'                 => __('Order', 'wp-license-manager'),
+            'description'           => __('Customer Orders', 'wp-license-manager'),
+            'labels'                => $order_labels,
+            'supports'              => ['title'],
+            'hierarchical'          => false,
+            'public'                => false,
+            'show_ui'               => true,
+            // Place Orders under Licenses native CPT menu
+            'show_in_menu'          => $show_native ? 'edit.php?post_type=wplm_license' : false,
+            'menu_position'         => 22,
+            'show_in_admin_bar'     => $show_native ? true : false,
+            'show_in_nav_menus'     => false,
+            'can_export'            => true,
+            'has_archive'           => false,
+            'exclude_from_search'   => true,
+            'publicly_queryable'    => false,
+            // Use standard post capabilities so admins/editor roles can see and edit
+            'capability_type'       => 'post',
+            'map_meta_cap'          => true,
+            'show_in_rest'          => false,
+        ];
+        register_post_type('wplm_order', $order_args);
 
         // Register Activity Log Post Type
         $activity_labels = [
@@ -180,5 +261,47 @@ class WPLM_CPT_Manager {
             'show_in_rest'          => false,
         ];
         register_post_type('wplm_activity_log', $activity_args);
+    }
+
+    /**
+     * Handle WPLM product slug conflicts
+     * This ensures WPLM products use the same slug as WooCommerce products
+     */
+    public function handle_wplm_product_slug($slug, $post_ID, $post_status, $post_type, $post_parent, $original_slug) {
+        if ($post_type !== 'wplm_product') {
+            return $slug;
+        }
+
+        // If this is a new post (no ID yet), check for existing products with the same slug
+        if ($post_ID === 0) {
+            // Check if there's already a WPLM product with this slug
+            $existing_product = get_posts([
+                'post_type' => 'wplm_product',
+                'name' => $original_slug,
+                'posts_per_page' => 1,
+                'post_status' => 'publish'
+            ]);
+
+            if (!empty($existing_product)) {
+                // Use the existing slug without adding "-2"
+                return $original_slug;
+            }
+        }
+
+        return $slug;
+    }
+    
+    /**
+     * Add bulk actions for custom post types.
+     */
+    public function add_bulk_actions($bulk_actions) {
+        // Ensure default WordPress bulk actions are available
+        if (!isset($bulk_actions['trash'])) {
+            $bulk_actions['trash'] = __('Move to Trash', 'wp-license-manager');
+        }
+        if (!isset($bulk_actions['delete'])) {
+            $bulk_actions['delete'] = __('Delete Permanently', 'wp-license-manager');
+        }
+        return $bulk_actions;
     }
 }

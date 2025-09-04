@@ -99,15 +99,47 @@ class WPLM_Enhanced_Admin_Manager {
      * Register settings
      */
     public function register_settings() {
-        // Register general settings
-        register_setting('wplm_general_settings', 'wplm_plugin_name');
-        register_setting('wplm_general_settings', 'wplm_default_duration_type');
-        register_setting('wplm_general_settings', 'wplm_default_duration_value');
-        register_setting('wplm_general_settings', 'wplm_default_activation_limit');
-        register_setting('wplm_general_settings', 'wplm_delete_on_uninstall');
-        register_setting('wplm_general_settings', 'wplm_email_notifications_enabled');
-        register_setting('wplm_general_settings', 'wplm_rest_api_enabled');
-        register_setting('wplm_general_settings', 'wplm_license_key_format');
+        // Register general settings with proper defaults for PHP 8.0+ compatibility
+        register_setting('wplm_general_settings', 'wplm_plugin_name', [
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => 'WP License Manager'
+        ]);
+        register_setting('wplm_general_settings', 'wplm_default_duration_type', [
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => 'lifetime'
+        ]);
+        register_setting('wplm_general_settings', 'wplm_default_duration_value', [
+            'type' => 'integer',
+            'sanitize_callback' => 'absint',
+            'default' => 1
+        ]);
+        register_setting('wplm_general_settings', 'wplm_default_activation_limit', [
+            'type' => 'integer',
+            'sanitize_callback' => 'absint',
+            'default' => 1
+        ]);
+        register_setting('wplm_general_settings', 'wplm_delete_on_uninstall', [
+            'type' => 'boolean',
+            'sanitize_callback' => 'rest_sanitize_boolean',
+            'default' => false
+        ]);
+        register_setting('wplm_general_settings', 'wplm_email_notifications_enabled', [
+            'type' => 'boolean',
+            'sanitize_callback' => 'rest_sanitize_boolean',
+            'default' => true
+        ]);
+        register_setting('wplm_general_settings', 'wplm_rest_api_enabled', [
+            'type' => 'boolean',
+            'sanitize_callback' => 'rest_sanitize_boolean',
+            'default' => true
+        ]);
+        register_setting('wplm_general_settings', 'wplm_license_key_format', [
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => 'standard'
+        ]);
 
         // Add settings sections
         add_settings_section(
@@ -1055,9 +1087,21 @@ class WPLM_Enhanced_Admin_Manager {
             // Generate unique license key
             $license_key = $this->generate_standard_license_key();
             $attempts = 0;
-            while (get_page_by_title($license_key, OBJECT, 'wplm_license') && $attempts < 5) {
+            $license_posts = get_posts([
+                'post_type' => 'wplm_license',
+                'title' => $license_key,
+                'posts_per_page' => 1,
+                'post_status' => 'publish'
+            ]);
+            while (!empty($license_posts) && $attempts < 5) {
                 $attempts++;
                 $license_key = $this->generate_standard_license_key();
+                $license_posts = get_posts([
+                    'post_type' => 'wplm_license',
+                    'title' => $license_key,
+                    'posts_per_page' => 1,
+                    'post_status' => 'publish'
+                ]);
             }
 
             // Create license post
@@ -1145,9 +1189,10 @@ class WPLM_Enhanced_Admin_Manager {
     public function ajax_get_licenses() {
         check_ajax_referer('wplm_admin_nonce', 'nonce');
         
-        $draw = intval($_POST['draw']);
-        $start = intval($_POST['start']);
-        $length = intval($_POST['length']);
+        // Safe defaults for DataTables params to avoid undefined index notices
+        $draw = intval($_POST['draw'] ?? 1);
+        $start = intval($_POST['start'] ?? 0);
+        $length = intval($_POST['length'] ?? 25);
 
         $args = [
             'post_type' => 'wplm_license',
@@ -1179,10 +1224,22 @@ class WPLM_Enhanced_Admin_Manager {
         ]);
     }
 
-    public function ajax_get_products() { wp_send_json(['draw' => 1, 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]); }
-    public function ajax_get_customers() { wp_send_json(['draw' => 1, 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]); }
-    public function ajax_get_subscriptions() { wp_send_json(['draw' => 1, 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]); }
-    public function ajax_get_activity_logs() { wp_send_json(['draw' => 1, 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]); }
+    public function ajax_get_products() { 
+        $draw = intval($_POST['draw'] ?? 1);
+        wp_send_json(['draw' => $draw, 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]); 
+    }
+    public function ajax_get_customers() { 
+        $draw = intval($_POST['draw'] ?? 1);
+        wp_send_json(['draw' => $draw, 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]); 
+    }
+    public function ajax_get_subscriptions() { 
+        $draw = intval($_POST['draw'] ?? 1);
+        wp_send_json(['draw' => $draw, 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]); 
+    }
+    public function ajax_get_activity_logs() { 
+        $draw = intval($_POST['draw'] ?? 1);
+        wp_send_json(['draw' => $draw, 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]); 
+    }
     public function ajax_add_customer() { wp_send_json_success(['message' => 'Customer added successfully']); }
     public function ajax_edit_customer() { wp_send_json_success(['message' => 'Customer updated successfully']); }
     public function ajax_delete_customer() { wp_send_json_success(['message' => 'Customer deleted successfully']); }

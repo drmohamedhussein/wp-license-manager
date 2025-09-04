@@ -100,7 +100,7 @@ function wplm_fs_init() {
              * @return array|WP_Error API response or WP_Error on failure.
              */
             public function deactivate_license() {
-                $license_key = get_option( 'wplm_license_key_' . $this->product_slug );
+                $license_key = get_option( 'wplm_license_key_' . $this->product_slug, '' );
                 if ( empty( $license_key ) ) {
                     return new WP_Error( 'wplm_no_license_key', __( 'No license key found to deactivate.', 'wp-license-manager' ) );
                 }
@@ -122,7 +122,7 @@ function wplm_fs_init() {
              * @return array|WP_Error API response or WP_Error on failure.
              */
             public function validate_license() {
-                $license_key = get_option( 'wplm_license_key_' . $this->product_slug );
+                $license_key = get_option( 'wplm_license_key_' . $this->product_slug, '' );
                 if ( empty( $license_key ) ) {
                     return new WP_Error( 'wplm_no_license_key', __( 'No license key found for validation.', 'wp-license-manager' ) );
                 }
@@ -154,7 +154,7 @@ function wplm_fs_init() {
                 }
 
                 $license_status = get_option( 'wplm_license_status_' . $this->product_slug, 'inactive' );
-                $license_key = get_option( 'wplm_license_key_' . $this->product_slug );
+                $license_key = get_option( 'wplm_license_key_' . $this->product_slug, '' );
 
                 $plugin_name = get_file_data( __FILE__, [ 'Plugin Name' => 'Plugin Name', 'Theme Name' => 'Theme Name' ] )['Plugin Name'] ?: WPLM_CLIENT_PRODUCT_SLUG;
                 

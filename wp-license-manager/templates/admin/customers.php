@@ -13,7 +13,6 @@ $search = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
 ?>
 
 <div class="wplm-customers-wrap">
-    <div class="wplm-admin-notices"></div> <!-- Unified notification area -->
     <div class="wplm-header">
         <h1 class="wplm-page-title">
             <span class="dashicons dashicons-groups"></span>
@@ -199,20 +198,20 @@ $search = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
                                         <?php _e('Edit', 'wp-license-manager'); ?>
                                     </button>
                                     <div class="wplm-actions-dropdown">
-                                        <button type="button" class="button button-small wplm-dropdown-toggle" aria-expanded="false" aria-haspopup="true" id="customer-actions-toggle-<?php echo esc_attr($customer['customer_id']); ?>">
+                                        <button type="button" class="button button-small wplm-dropdown-toggle">
                                             <span class="dashicons dashicons-ellipsis"></span>
                                         </button>
-                                        <div class="wplm-dropdown-menu" role="menu" aria-labelledby="customer-actions-toggle-<?php echo esc_attr($customer['customer_id']); ?>">
-                                            <a href="mailto:<?php echo esc_attr($customer['email']); ?>" class="wplm-dropdown-item" role="menuitem">
+                                        <div class="wplm-dropdown-menu">
+                                            <a href="mailto:<?php echo esc_attr($customer['email']); ?>" class="wplm-dropdown-item">
                                                 <span class="dashicons dashicons-email"></span>
                                                 <?php _e('Send Email', 'wp-license-manager'); ?>
                                             </a>
-                                            <button type="button" class="wplm-dropdown-item wplm-export-customer-data" data-customer-email="<?php echo esc_attr($customer['email']); ?>" role="menuitem">
+                                            <button type="button" class="wplm-dropdown-item wplm-export-customer-data" data-customer-email="<?php echo esc_attr($customer['email']); ?>">
                                                 <span class="dashicons dashicons-download"></span>
                                                 <?php _e('Export Data', 'wp-license-manager'); ?>
                                             </button>
                                             <?php if ($customer['wc_customer_id']): ?>
-                                                <a href="<?php echo admin_url('user-edit.php?user_id=' . $customer['wc_customer_id']); ?>" target="_blank" class="wplm-dropdown-item" role="menuitem">
+                                                <a href="<?php echo admin_url('user-edit.php?user_id=' . $customer['wc_customer_id']); ?>" target="_blank" class="wplm-dropdown-item">
                                                     <span class="dashicons dashicons-admin-users"></span>
                                                     <?php _e('WC Profile', 'wp-license-manager'); ?>
                                                 </a>
@@ -274,4 +273,386 @@ $search = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
         </div>
     </div>
 </div>
+
+<style>
+/* Customer CRM Styles */
+.wplm-customers-wrap {
+    margin: 20px 0;
+}
+
+.wplm-customer-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.wplm-customers-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #e1e1e1;
+    border-radius: 8px;
+}
+
+.wplm-search-box form {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.wplm-search-box input[type="search"] {
+    width: 300px;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.wplm-customers-table-wrap {
+    background: #fff;
+    border: 1px solid #e1e1e1;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.wplm-customers-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.wplm-customers-table th,
+.wplm-customers-table td {
+    padding: 15px;
+    text-align: left;
+    border-bottom: 1px solid #f1f1f1;
+}
+
+.wplm-customers-table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.wplm-customer-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.wplm-customer-avatar img {
+    border-radius: 50%;
+}
+
+.wplm-customer-name {
+    display: block;
+    margin-bottom: 4px;
+    color: #1d2327;
+}
+
+.wplm-customer-email {
+    font-size: 13px;
+    color: #646970;
+}
+
+.wplm-customer-email a {
+    color: #2271b1;
+    text-decoration: none;
+}
+
+.wplm-customer-wc {
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+.wplm-customer-wc a {
+    color: #8c8f94;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.wplm-license-summary {
+    text-align: center;
+}
+
+.wplm-license-count {
+    margin-bottom: 4px;
+}
+
+.wplm-license-breakdown {
+    font-size: 12px;
+    color: #646970;
+}
+
+.wplm-active {
+    color: #28a745;
+}
+
+.wplm-expired {
+    color: #dc3545;
+    margin-left: 8px;
+}
+
+.wplm-products-list {
+    max-width: 200px;
+}
+
+.wplm-product-item {
+    font-size: 13px;
+    margin-bottom: 2px;
+    color: #1d2327;
+}
+
+.wplm-product-more {
+    font-size: 12px;
+    color: #8c8f94;
+    font-style: italic;
+}
+
+.wplm-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.wplm-status--active {
+    background: #d4edda;
+    color: #155724;
+}
+
+.wplm-status--inactive {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.wplm-date {
+    font-weight: 500;
+    margin-bottom: 2px;
+}
+
+.wplm-time-ago {
+    font-size: 12px;
+    color: #8c8f94;
+}
+
+.wplm-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.wplm-actions-dropdown {
+    position: relative;
+}
+
+.wplm-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    z-index: 1000;
+    min-width: 150px;
+    display: none;
+}
+
+.wplm-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    color: #1d2327;
+    text-decoration: none;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.wplm-dropdown-item:hover {
+    background: #f6f7f7;
+}
+
+.wplm-no-customers {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.wplm-empty-state {
+    color: #8c8f94;
+}
+
+.wplm-empty-state .dashicons {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.wplm-empty-state h3 {
+    margin: 0 0 8px 0;
+    color: #646970;
+}
+
+.wplm-pagination {
+    margin-top: 20px;
+    text-align: center;
+}
+
+/* Modal Styles */
+.wplm-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.7);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wplm-modal-content {
+    background: #fff;
+    border-radius: 8px;
+    max-width: 800px;
+    width: 90%;
+    max-height: 90%;
+    overflow: hidden;
+}
+
+.wplm-modal-header {
+    padding: 20px;
+    border-bottom: 1px solid #e1e1e1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.wplm-modal-header h2 {
+    margin: 0;
+}
+
+.wplm-modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #8c8f94;
+}
+
+.wplm-modal-body {
+    padding: 20px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .wplm-customers-toolbar {
+        flex-direction: column;
+        gap: 15px;
+        align-items: stretch;
+    }
+    
+    .wplm-search-box input[type="search"] {
+        width: 100%;
+    }
+    
+    .wplm-customers-table {
+        font-size: 14px;
+    }
+    
+    .wplm-customers-table th,
+    .wplm-customers-table td {
+        padding: 10px 8px;
+    }
+    
+    .wplm-customer-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+}
+</style>
+
+<script>
+jQuery(document).ready(function($) {
+    // Dropdown toggles
+    $('.wplm-dropdown-toggle').on('click', function(e) {
+        e.stopPropagation();
+        $('.wplm-dropdown-menu').hide();
+        $(this).siblings('.wplm-dropdown-menu').toggle();
+    });
+    
+    // Close dropdowns when clicking elsewhere
+    $(document).on('click', function() {
+        $('.wplm-dropdown-menu').hide();
+    });
+    
+    // View customer modal
+    $('.wplm-view-customer').on('click', function() {
+        var customerEmail = $(this).data('customer-email');
+        // Load customer details via AJAX
+        loadCustomerDetails(customerEmail);
+        $('#wplm-customer-modal').show();
+    });
+    
+    // Close modal
+    $('.wplm-modal-close, .wplm-modal').on('click', function(e) {
+        if (e.target === this) {
+            $('#wplm-customer-modal').hide();
+        }
+    });
+    
+    // Export customers
+    $('#wplm-export-customers').on('click', function() {
+        // Implement export functionality
+        window.location.href = ajaxurl + '?action=wplm_export_customers&_wpnonce=' + wplm_admin.nonce;
+    });
+    
+    // Export individual customer data
+    $('.wplm-export-customer-data').on('click', function() {
+        var customerEmail = $(this).data('customer-email');
+        window.location.href = ajaxurl + '?action=wplm_export_customer_data&customer_email=' + encodeURIComponent(customerEmail) + '&_wpnonce=' + wplm_admin.nonce;
+    });
+    
+    function loadCustomerDetails(customerEmail) {
+        $.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'wplm_get_customer_details',
+                customer_email: customerEmail,
+                _wpnonce: wplm_admin.nonce
+            },
+            beforeSend: function() {
+                $('#wplm-customer-modal .wplm-modal-body').html('<p><?php _e('Loading...', 'wp-license-manager'); ?></p>');
+            },
+            success: function(response) {
+                if (response.success) {
+                    $('#wplm-customer-modal .wplm-modal-body').html(response.data.html);
+                } else {
+                    $('#wplm-customer-modal .wplm-modal-body').html('<p><?php _e('Error loading customer details.', 'wp-license-manager'); ?></p>');
+                }
+            },
+            error: function() {
+                $('#wplm-customer-modal .wplm-modal-body').html('<p><?php _e('Error loading customer details.', 'wp-license-manager'); ?></p>');
+            }
+        });
+    }
+});
+</script>
 

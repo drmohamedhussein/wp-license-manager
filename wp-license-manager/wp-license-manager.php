@@ -1,12 +1,20 @@
 <?php
 /**
  * Plugin Name:       WP License Manager
- * Description:       A server for managing and validating software license keys via a REST API.
+ * Plugin URI:        https://licenseswp.com/
+ * Description:       A comprehensive server for managing and validating software license keys via REST API with WooCommerce integration.
  * Version:           2.0.0
- * Author:            Your Name
+ * Author:            WPDev Ltd.
+ * Author URI:        https://wpdevltd.com/
  * License:           GPL v2 or later
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       wp-license-manager
+ * Domain Path:       /languages
+ * Requires at least: 5.0
+ * Tested up to:      6.4
+ * Requires PHP:      7.4
+ * Network:           false
+ * Update URI:        https://licenseswp.com/
  */
 
 // Exit if accessed directly, and ensure minimum PHP version.
@@ -40,8 +48,27 @@ if (version_compare(PHP_VERSION, '7.4', '<')) {
 
 define('WPLM_VERSION', '2.0.0');
 define('WPLM_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('WPLM_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WPLM_PLUGIN_FILE', __FILE__); // Define plugin file for hooks
-define('WPLM_URL', plugin_dir_url(__FILE__)); // Define plugin URL for assets
+
+/**
+ * Helper function to replace deprecated get_page_by_title
+ */
+function wplm_get_post_by_title($title, $post_type = 'post') {
+    $query = new WP_Query([
+        'post_type' => $post_type,
+        'post_status' => 'publish',
+        'title' => $title,
+        'posts_per_page' => 1,
+        'fields' => 'ids'
+    ]);
+    
+    if ($query->have_posts()) {
+        return get_post($query->posts[0]);
+    }
+    
+    return null;
+}
 
 /**
  * The main plugin class.
@@ -118,16 +145,43 @@ final class WP_License_Manager {
             'includes/class-subscription-manager.php',
             'includes/class-built-in-subscription-system.php',
             'includes/class-customer-management-system.php',
+            'includes/class-orders-management-system.php',
             'includes/class-enhanced-admin-manager.php',
             'includes/class-advanced-licensing.php',
             'includes/class-enhanced-api-manager.php',
             'includes/class-import-export-manager.php',
-            'includes/class-enhanced-digital-downloads.php',
             'includes/class-rest-api-manager.php',
             'includes/class-analytics-dashboard.php',
+            'includes/class-auto-licenser-system.php',
             'includes/class-bulk-operations-manager.php',
-            'includes/class-automatic-licenser.php', // Corrected class name
             'includes/class-email-notification-system.php',
+            // Enhanced Subscription System Classes
+            'includes/class-enhanced-subscription-manager.php',
+            'includes/class-enhanced-subscription-product.php',
+            'includes/class-subscription-synchronizer.php',
+            'includes/class-subscription-switcher.php',
+            'includes/class-enhanced-subscription-admin.php',
+            'includes/class-subscription-frontend.php',
+            // New Enhanced Subscription Admin Interface
+            'includes/class-subscription-admin-interface.php',
+            'includes/class-enhanced-woocommerce-subscription-integration.php',
+            'includes/class-enhanced-subscription-management.php',
+            // WooCommerce Product Fields and Subscription Integration
+            'includes/class-woocommerce-product-fields.php',
+            'includes/class-woocommerce-subscription-integration.php',
+        // DPMFW Integration Classes
+        'includes/class-wplm-dpmfw-database.php',
+        'includes/class-wplm-dpmfw-subscription-manager.php',
+        'includes/class-wplm-dpmfw-woocommerce-integration.php',
+        'includes/class-wplm-dpmfw-helper-functions.php',
+        'includes/class-wplm-dpmfw-admin-interface.php',
+        
+        // Comprehensive Systems
+        'includes/class-comprehensive-subscription-system.php',
+        'includes/class-comprehensive-product-system.php',
+        'includes/class-comprehensive-license-system.php',
+        'includes/class-comprehensive-billing-system.php',
+        'includes/class-comprehensive-customer-portal.php',
         ];
 
         foreach ($optional_files as $file) {
@@ -162,6 +216,46 @@ final class WP_License_Manager {
                 }
             }
         }
+        
+        // Include utility scripts
+        $utility_files = [
+            'fix-product-duplicates.php',
+            'update-product-prefixes.php',
+            'cleanup-duplicates.php',
+            'fix-capabilities.php',
+            'debug-woocommerce-integration.php',
+        ];
+        
+        // Include automatic plugin deactivator
+        $auto_deactivator_file = WPLM_PLUGIN_DIR . 'includes/class-automatic-plugin-deactivator.php';
+        if (file_exists($auto_deactivator_file)) {
+            try {
+                require_once $auto_deactivator_file;
+            } catch (Exception $e) {
+                $this->log_error('Failed to include automatic plugin deactivator: ' . $e->getMessage());
+            }
+        }
+        
+        // Include PHP 8.0+ compatibility fix
+        $compatibility_file = WPLM_PLUGIN_DIR . 'fix-php8-compatibility.php';
+        if (file_exists($compatibility_file)) {
+            try {
+                require_once $compatibility_file;
+            } catch (Exception $e) {
+                $this->log_error('Failed to include PHP 8.0+ compatibility fix: ' . $e->getMessage());
+            }
+        }
+
+        foreach ($utility_files as $file) {
+            $file_path = WPLM_PLUGIN_DIR . $file;
+            if (file_exists($file_path)) {
+                try {
+                    require_once $file_path;
+                } catch (Exception $e) {
+                    $this->log_error('Failed to include utility file: ' . $file . ' - ' . $e->getMessage());
+                }
+            }
+        }
     }
 
     /**
@@ -176,6 +270,26 @@ final class WP_License_Manager {
 
         // Schedule license expiry check cron job
         add_action('wplm_check_expiring_licenses_daily', [$this, '_check_expiring_licenses']);
+        
+        // Add whitelabel filters
+        add_filter('plugin_row_meta', [$this, 'filter_plugin_row_meta'], 10, 2);
+        add_filter('all_plugins', [$this, 'filter_plugin_data']);
+        add_filter('plugin_action_links_' . plugin_basename(WPLM_PLUGIN_FILE), [$this, 'add_plugin_action_links']);
+        
+        // Additional filter to ensure plugin details link is properly overridden
+        add_filter('plugin_row_meta', [$this, 'override_plugin_details_link'], 5, 2);
+        
+        // Force plugin data refresh on admin_init
+        add_action('admin_init', [$this, 'force_plugin_data_refresh'], 1);
+        
+        // Additional approach: Hook into the specific WordPress function that generates plugin links
+        add_filter('plugin_install_action_links', [$this, 'filter_plugin_install_links'], 10, 2);
+        
+        // JavaScript approach: Override the link after page load
+        add_action('admin_footer', [$this, 'add_plugin_details_override_js']);
+        
+        // Prevent WordPress from checking the wrong repository for updates
+        add_filter('http_request_args', [$this, 'prevent_wrong_repo_check'], 10, 2);
     }
 
     /**
@@ -190,10 +304,10 @@ final class WP_License_Manager {
                 $this->log_error('WPLM_CPT_Manager class not found');
             }
             
-            if (class_exists('WPLM_Admin_Manager')) {
-                new WPLM_Admin_Manager(); // Initialize admin manager (meta boxes and AJAX only - no menu)
-            } else {
-                $this->log_error('WPLM_Admin_Manager class not found');
+            // WPLM_Admin_Manager is now replaced by WPLM_Enhanced_Admin_Manager
+            // Only initialize if Enhanced Admin Manager is not available
+            if (!class_exists('WPLM_Enhanced_Admin_Manager') && class_exists('WPLM_Admin_Manager')) {
+                new WPLM_Admin_Manager(); // Fallback admin manager
             }
             
             if (class_exists('WPLM_API_Manager')) {
@@ -221,6 +335,10 @@ final class WP_License_Manager {
         
         if (class_exists('WPLM_Customer_Management_System')) {
             new WPLM_Customer_Management_System(); // Initialize customer management system
+        }
+        
+        if (class_exists('WPLM_Orders_Management_System')) {
+            new WPLM_Orders_Management_System(); // Initialize orders management system
         }
         
         if (class_exists('WPLM_Enhanced_Admin_Manager')) {
@@ -255,12 +373,86 @@ final class WP_License_Manager {
             new WPLM_Analytics_Dashboard(); // Initialize analytics dashboard
         }
         
-        if (class_exists('WPLM_Automatic_Licenser')) {
-            new WPLM_Automatic_Licenser(); // Initialize automatic licenser system
+        if (class_exists('WPLM_Automatic_Plugin_Deactivator')) {
+            new WPLM_Automatic_Plugin_Deactivator(); // Initialize automatic plugin deactivator
         }
         
-        if (class_exists('WPLM_Enhanced_Digital_Downloads')) {
-            new WPLM_Enhanced_Digital_Downloads(); // Initialize enhanced digital downloads system
+        if (class_exists('WPLM_Auto_Licenser_System')) {
+            new WPLM_Auto_Licenser_System(); // Initialize auto licenser system
+        }
+        
+        // Digital downloads system removed - using products instead
+        
+        // Initialize Enhanced Subscription Admin Interface
+        if (class_exists('WPLM_Subscription_Admin_Interface')) {
+            new WPLM_Subscription_Admin_Interface(); // Initialize subscription admin interface
+        }
+        
+        // Initialize Enhanced Subscription Management
+        if (class_exists('WPLM_Enhanced_Subscription_Management')) {
+            new WPLM_Enhanced_Subscription_Management(); // Initialize enhanced subscription management
+        }
+        
+        // Initialize Enhanced WooCommerce Subscription Integration
+        if (class_exists('WPLM_Enhanced_WooCommerce_Subscription_Integration')) {
+            new WPLM_Enhanced_WooCommerce_Subscription_Integration(); // Initialize enhanced WooCommerce subscription integration
+        }
+        
+        // Initialize WooCommerce Product Fields (only if WooCommerce is active)
+        if (class_exists('WPLM_WooCommerce_Product_Fields') && class_exists('WooCommerce')) {
+            // Use init hook to ensure WooCommerce is fully loaded
+            add_action('init', function() {
+                if (class_exists('WooCommerce') && function_exists('woocommerce_wp_checkbox')) {
+                    new WPLM_WooCommerce_Product_Fields(); // Initialize WooCommerce product fields
+                }
+            }, 20);
+        }
+        
+        // Initialize WooCommerce Subscription Integration (only if WooCommerce is active)
+        if (class_exists('WPLM_WooCommerce_Subscription_Integration') && class_exists('WooCommerce')) {
+            new WPLM_WooCommerce_Subscription_Integration(); // Initialize WooCommerce subscription integration
+        }
+        
+        // Initialize DPMFW Integration Classes
+        if (class_exists('WPLM_DPMFW_Database')) {
+            new WPLM_DPMFW_Database(); // Initialize DPMFW database integration
+        }
+        
+        if (class_exists('WPLM_DPMFW_Subscription_Manager')) {
+            new WPLM_DPMFW_Subscription_Manager(); // Initialize DPMFW subscription manager
+        }
+        
+        if (class_exists('WPLM_DPMFW_WooCommerce_Integration')) {
+            new WPLM_DPMFW_WooCommerce_Integration(); // Initialize DPMFW WooCommerce integration
+        }
+        
+        if (class_exists('WPLM_DPMFW_Helper_Functions')) {
+            new WPLM_DPMFW_Helper_Functions(); // Initialize DPMFW helper functions
+        }
+
+        if (class_exists('WPLM_DPMFW_Admin_Interface')) {
+            new WPLM_DPMFW_Admin_Interface(); // Initialize DPMFW admin interface
+        }
+        
+        // Initialize Comprehensive Systems
+        if (class_exists('WPLM_Comprehensive_Subscription_System')) {
+            new WPLM_Comprehensive_Subscription_System(); // Initialize comprehensive subscription system
+        }
+        
+        if (class_exists('WPLM_Comprehensive_Product_System')) {
+            new WPLM_Comprehensive_Product_System(); // Initialize comprehensive product system
+        }
+        
+        if (class_exists('WPLM_Comprehensive_License_System')) {
+            new WPLM_Comprehensive_License_System(); // Initialize comprehensive license system
+        }
+        
+        if (class_exists('WPLM_Comprehensive_Billing_System')) {
+            new WPLM_Comprehensive_Billing_System(); // Initialize comprehensive billing system
+        }
+        
+        if (class_exists('WPLM_Comprehensive_Customer_Portal')) {
+            new WPLM_Comprehensive_Customer_Portal(); // Initialize comprehensive customer portal
         }
 
         // Initialize WooCommerce integration if WooCommerce is active
@@ -307,7 +499,7 @@ final class WP_License_Manager {
             $this->add_custom_capabilities();
 
             // Generate initial API key if one doesn't exist
-            if (empty(get_option('wplm_api_key'))) {
+            if (empty(get_option('wplm_api_key', ''))) {
                 if (function_exists('random_bytes')) {
                     $api_key = bin2hex(random_bytes(32)); // Generate a 64-character hex key
                 } else {
@@ -410,6 +602,7 @@ final class WP_License_Manager {
                 'read_wplm_license',
                 'delete_wplm_license',
                 'edit_wplm_licenses',
+                'read_wplm_licenses',
                 'edit_others_wplm_licenses',
                 'publish_wplm_licenses',
                 'read_private_wplm_licenses',
@@ -418,6 +611,7 @@ final class WP_License_Manager {
                 'delete_others_wplm_licenses',
                 'edit_published_wplm_licenses',
                 'create_wplm_licenses',
+                'delete_wplm_licenses',
                 'manage_wplm_licenses', // Added for export/import and general management
 
                 // Product Capabilities
@@ -425,6 +619,7 @@ final class WP_License_Manager {
                 'read_wplm_product',
                 'delete_wplm_product',
                 'edit_wplm_products',
+                'read_wplm_products',
                 'edit_others_wplm_products',
                 'publish_wplm_products',
                 'read_private_wplm_products',
@@ -433,12 +628,14 @@ final class WP_License_Manager {
                 'delete_others_wplm_products',
                 'edit_published_wplm_products',
                 'create_wplm_products',
+                'delete_wplm_products',
 
                 // Subscription Capabilities
                 'edit_wplm_subscription',
                 'read_wplm_subscription',
                 'delete_wplm_subscription',
                 'edit_wplm_subscriptions',
+                'read_wplm_subscriptions',
                 'edit_others_wplm_subscriptions',
                 'publish_wplm_subscriptions',
                 'read_private_wplm_subscriptions',
@@ -447,6 +644,7 @@ final class WP_License_Manager {
                 'delete_others_wplm_subscriptions',
                 'edit_published_wplm_subscriptions',
                 'create_wplm_subscriptions',
+                'delete_wplm_subscriptions',
                 'manage_wplm_subscriptions',
 
                 // API Key Capability
@@ -471,6 +669,7 @@ final class WP_License_Manager {
                 'read_wplm_license',
                 'delete_wplm_license',
                 'edit_wplm_licenses',
+                'read_wplm_licenses',
                 'edit_others_wplm_licenses',
                 'publish_wplm_licenses',
                 'read_private_wplm_licenses',
@@ -479,6 +678,7 @@ final class WP_License_Manager {
                 'delete_others_wplm_licenses',
                 'edit_published_wplm_licenses',
                 'create_wplm_licenses',
+                'delete_wplm_licenses',
                 'manage_wplm_licenses',
 
                 // Product Capabilities
@@ -486,6 +686,7 @@ final class WP_License_Manager {
                 'read_wplm_product',
                 'delete_wplm_product',
                 'edit_wplm_products',
+                'read_wplm_products',
                 'edit_others_wplm_products',
                 'publish_wplm_products',
                 'read_private_wplm_products',
@@ -494,12 +695,14 @@ final class WP_License_Manager {
                 'delete_others_wplm_products',
                 'edit_published_wplm_products',
                 'create_wplm_products',
+                'delete_wplm_products',
 
                 // Subscription Capabilities
                 'edit_wplm_subscription',
                 'read_wplm_subscription',
                 'delete_wplm_subscription',
                 'edit_wplm_subscriptions',
+                'read_wplm_subscriptions',
                 'edit_others_wplm_subscriptions',
                 'publish_wplm_subscriptions',
                 'read_private_wplm_subscriptions',
@@ -508,6 +711,7 @@ final class WP_License_Manager {
                 'delete_others_wplm_subscriptions',
                 'edit_published_wplm_subscriptions',
                 'create_wplm_subscriptions',
+                'delete_wplm_subscriptions',
                 'manage_wplm_subscriptions',
 
                 // API Key Capability
@@ -612,6 +816,307 @@ final class WP_License_Manager {
                 }
             }
         }
+    }
+
+    /**
+     * Filter plugin row meta to apply whitelabel settings
+     */
+    public function filter_plugin_row_meta($plugin_meta, $plugin_file) {
+        if ($plugin_file === plugin_basename(WPLM_PLUGIN_FILE)) {
+            $options = get_option('wplm_whitelabel_options', []);
+            
+            // Update plugin name in meta if custom name is set
+            if (!empty($options['plugin_name'])) {
+                foreach ($plugin_meta as $key => $meta) {
+                    if (strpos($meta, 'WP License Manager') !== false) {
+                        $plugin_meta[$key] = str_replace('WP License Manager', $options['plugin_name'], $meta);
+                    }
+                }
+            }
+            
+            // Replace "View Details" link with whitelabel website URL
+            if (!empty($options['plugin_website'])) {
+                foreach ($plugin_meta as $key => $meta) {
+                    // Check if this is a "View Details" link
+                    if (strpos($meta, 'View Details') !== false && strpos($meta, 'href=') !== false) {
+                        // Extract the plugin name for the aria-label
+                        $plugin_name = !empty($options['plugin_name']) ? $options['plugin_name'] : 'WP License Manager';
+                        
+                        // Replace with custom "View Details" link
+                        $plugin_meta[$key] = sprintf(
+                            '<a href="%s" target="_blank" aria-label="More information about %s">View Details</a>',
+                            esc_url($options['plugin_website']),
+                            esc_attr($plugin_name)
+                        );
+                    }
+                }
+            }
+        }
+        
+        return $plugin_meta;
+    }
+
+    /**
+     * Override plugin details link specifically for whitelabel website
+     */
+    public function override_plugin_details_link($plugin_meta, $plugin_file) {
+        if ($plugin_file === plugin_basename(WPLM_PLUGIN_FILE)) {
+            $options = get_option('wplm_whitelabel_options', []);
+            
+            // Debug logging (only log once per session to avoid spam)
+            if (defined('WP_DEBUG') && WP_DEBUG && !get_transient('wplm_debug_meta_logged_' . $plugin_file)) {
+                error_log('WPLM Debug - Plugin file: ' . $plugin_file);
+                error_log('WPLM Debug - Whitelabel options: ' . print_r($options, true));
+                error_log('WPLM Debug - Plugin meta before: ' . print_r($plugin_meta, true));
+                set_transient('wplm_debug_meta_logged_' . $plugin_file, true, HOUR_IN_SECONDS);
+            }
+            
+            // Only proceed if we have a custom website URL
+            if (!empty($options['plugin_website'])) {
+                $plugin_name = !empty($options['plugin_name']) ? $options['plugin_name'] : 'WP License Manager';
+                
+                // Look for and replace the "View Details" link
+                foreach ($plugin_meta as $key => $meta) {
+                    // Check if this contains a "View Details" link
+                    if (strpos($meta, 'View Details') !== false) {
+                        // Replace with our custom link
+                        $plugin_meta[$key] = sprintf(
+                            '<a href="%s" target="_blank" aria-label="More information about %s">View Details</a>',
+                            esc_url($options['plugin_website']),
+                            esc_attr($plugin_name)
+                        );
+                        
+                        // Debug logging (only in debug mode)
+                        if (defined('WP_DEBUG') && WP_DEBUG) {
+                            error_log('WPLM: Overriding plugin details link to: ' . $options['plugin_website']);
+                            error_log('WPLM Debug - Plugin meta after: ' . print_r($plugin_meta, true));
+                        }
+                        
+                        break; // Only replace the first occurrence
+                    }
+                }
+            } else {
+                // Debug logging when no website URL is set
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('WPLM Debug - No plugin_website URL found in whitelabel options');
+                }
+            }
+        }
+        
+        return $plugin_meta;
+    }
+
+    /**
+     * Force plugin data refresh to ensure whitelabel settings are applied
+     */
+    public function force_plugin_data_refresh() {
+        // Only run on plugins page
+        if (!isset($_GET['page']) || $_GET['page'] !== 'plugins.php') {
+            return;
+        }
+        
+        // Clear any cached plugin data
+        wp_cache_delete('plugins', 'plugins');
+        
+        // Force WordPress to reload plugin data
+        if (function_exists('wp_get_plugins')) {
+            wp_get_plugins(true); // Force refresh
+        }
+        
+        // Also clear the plugin data cache for our specific plugin
+        $plugin_file = plugin_basename(WPLM_PLUGIN_FILE);
+        wp_cache_delete($plugin_file, 'plugin_data');
+        
+        // Force refresh of our plugin data
+        get_plugin_data(WPLM_PLUGIN_FILE, false, true);
+    }
+
+    /**
+     * Filter plugin install action links (alternative approach)
+     */
+    public function filter_plugin_install_links($action_links, $plugin) {
+        // This filter is not needed for our use case, but keeping it for compatibility
+        return $action_links;
+    }
+
+    /**
+     * Add JavaScript to override plugin details link
+     */
+    public function add_plugin_details_override_js() {
+        // Only run on plugins page
+        $screen = get_current_screen();
+        if (!$screen || $screen->id !== 'plugins') {
+            return;
+        }
+        
+        $options = get_option('wplm_whitelabel_options', []);
+        if (empty($options['plugin_website'])) {
+            return;
+        }
+        
+        $plugin_name = !empty($options['plugin_name']) ? $options['plugin_name'] : 'WP License Manager';
+        ?>
+        <script type="text/javascript">
+        jQuery(document).ready(function($) {
+            // Find our plugin row by multiple methods
+            var pluginRow = $('tr[data-plugin*="wp-license-manager"]');
+            
+            if (pluginRow.length === 0) {
+                // Try finding by plugin name
+                pluginRow = $('tr').filter(function() {
+                    var pluginTitle = $(this).find('td.plugin-title strong').text();
+                    return pluginTitle.indexOf('<?php echo esc_js($plugin_name); ?>') !== -1 || 
+                           pluginTitle.indexOf('WP License Manager') !== -1;
+                });
+            }
+            
+            if (pluginRow.length === 0) {
+                // Try finding by author
+                pluginRow = $('tr').filter(function() {
+                    var authorText = $(this).find('td.plugin-title .plugin-author').text();
+                    return authorText.indexOf('WPDev Ltd.') !== -1;
+                });
+            }
+            
+            if (pluginRow.length > 0) {
+                console.log('WPLM: Found plugin row');
+                
+                // Find the "View Details" link - be more specific
+                var viewDetailsLink = pluginRow.find('a').filter(function() {
+                    var linkText = $(this).text().toLowerCase();
+                    var linkHref = $(this).attr('href') || '';
+                    return (linkText.indexOf('view details') !== -1 || linkText.indexOf('details') !== -1) &&
+                           (linkHref.indexOf('wordpress.org') !== -1 || linkHref.indexOf('plugin') !== -1);
+                });
+                
+                if (viewDetailsLink.length > 0) {
+                    // Replace the href
+                    viewDetailsLink.attr('href', '<?php echo esc_js($options['plugin_website']); ?>');
+                    viewDetailsLink.attr('target', '_blank');
+                    viewDetailsLink.attr('aria-label', 'More information about <?php echo esc_js($plugin_name); ?>');
+                    
+                    console.log('WPLM: Plugin details link overridden via JavaScript to: <?php echo esc_js($options['plugin_website']); ?>');
+                } else {
+                    console.log('WPLM: View Details link not found in plugin row');
+                    // Try to find any link that might be the details link
+                    var allLinks = pluginRow.find('a');
+                    console.log('WPLM: Found ' + allLinks.length + ' links in plugin row');
+                    allLinks.each(function() {
+                        console.log('WPLM: Link text: "' + $(this).text() + '", href: "' + $(this).attr('href') + '"');
+                    });
+                }
+            } else {
+                console.log('WPLM: Plugin row not found');
+            }
+        });
+        </script>
+        <?php
+    }
+
+    /**
+     * Prevent WordPress from checking the wrong repository for updates
+     */
+    public function prevent_wrong_repo_check($args, $url) {
+        // Check if this is a request to WordPress.org plugin repository
+        if (strpos($url, 'api.wordpress.org/plugins/update-check') !== false) {
+            // Get our plugin data
+            $plugin_file = plugin_basename(WPLM_PLUGIN_FILE);
+            $plugin_data = get_plugin_data(WPLM_PLUGIN_FILE);
+            
+            // If this is our plugin, modify the request to prevent conflicts
+            if (isset($args['body']['plugins']) && is_string($args['body']['plugins'])) {
+                $plugins_data = json_decode($args['body']['plugins'], true);
+                if (isset($plugins_data[$plugin_file])) {
+                    // Ensure our plugin has the correct UpdateURI
+                    $plugins_data[$plugin_file]['UpdateURI'] = 'https://licenseswp.com/';
+                    $args['body']['plugins'] = json_encode($plugins_data);
+                }
+            }
+        }
+        
+        return $args;
+    }
+
+    /**
+     * Filter plugin data to apply whitelabel settings
+     */
+    public function filter_plugin_data($plugins) {
+        $plugin_file = plugin_basename(WPLM_PLUGIN_FILE);
+        
+        if (isset($plugins[$plugin_file])) {
+            $options = get_option('wplm_whitelabel_options', []);
+            
+            // Debug logging (only log once per session to avoid spam)
+            if (defined('WP_DEBUG') && WP_DEBUG && !get_transient('wplm_debug_logged_' . $plugin_file)) {
+                error_log('WPLM Debug - Filtering plugin data for: ' . $plugin_file);
+                error_log('WPLM Debug - Whitelabel options: ' . print_r($options, true));
+                error_log('WPLM Debug - Plugin data before: ' . print_r($plugins[$plugin_file], true));
+                set_transient('wplm_debug_logged_' . $plugin_file, true, HOUR_IN_SECONDS);
+            }
+            
+            // Update plugin name
+            if (!empty($options['plugin_name'])) {
+                $plugins[$plugin_file]['Name'] = $options['plugin_name'];
+            }
+            
+            // Update plugin description
+            if (!empty($options['plugin_description'])) {
+                $plugins[$plugin_file]['Description'] = $options['plugin_description'];
+            }
+            
+            // Update plugin author
+            if (!empty($options['plugin_author'])) {
+                $plugins[$plugin_file]['Author'] = $options['plugin_author'];
+            }
+            
+            // Update plugin URI - this affects the "View Details" link
+            if (!empty($options['plugin_website'])) {
+                $plugins[$plugin_file]['PluginURI'] = $options['plugin_website'];
+            } else {
+                // Fallback to default if no whitelabel website is set
+                $plugins[$plugin_file]['PluginURI'] = 'https://licenseswp.com/';
+            }
+            
+            // Update author URI
+            if (!empty($options['plugin_author_website'])) {
+                $plugins[$plugin_file]['AuthorURI'] = $options['plugin_author_website'];
+            } else {
+                // Fallback to default if no whitelabel author website is set
+                $plugins[$plugin_file]['AuthorURI'] = 'https://wpdevltd.com/';
+            }
+            
+            // Always set UpdateURI to prevent WordPress from checking the wrong repository
+            $update_uri = !empty($options['plugin_website']) ? $options['plugin_website'] : 'https://licenseswp.com/';
+            $plugins[$plugin_file]['UpdateURI'] = $update_uri;
+            
+            // Debug logging after changes (only log once per session)
+            if (defined('WP_DEBUG') && WP_DEBUG && !get_transient('wplm_debug_logged_after_' . $plugin_file)) {
+                error_log('WPLM Debug - Plugin data after: ' . print_r($plugins[$plugin_file], true));
+                set_transient('wplm_debug_logged_after_' . $plugin_file, true, HOUR_IN_SECONDS);
+            }
+        }
+        
+        return $plugins;
+    }
+
+    /**
+     * Add action links to plugin page
+     */
+    public function add_plugin_action_links($links) {
+        $plugin_name = self::get_plugin_name();
+        $settings_link = '<a href="' . admin_url('admin.php?page=wplm-settings') . '">' . __('Settings', 'wp-license-manager') . '</a>';
+        $dashboard_link = '<a href="' . admin_url('admin.php?page=wplm-dashboard') . '">' . __('Dashboard', 'wp-license-manager') . '</a>';
+        
+        array_unshift($links, $settings_link, $dashboard_link);
+        return $links;
+    }
+
+    /**
+     * Get plugin name from whitelabel settings
+     */
+    public static function get_plugin_name() {
+        $options = get_option('wplm_whitelabel_options', []);
+        return !empty($options['plugin_name']) ? $options['plugin_name'] : 'LicensesWP';
     }
 }
 

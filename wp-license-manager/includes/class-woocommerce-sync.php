@@ -158,27 +158,59 @@ class WPLM_WooCommerce_Sync {
      */
     private function get_or_create_wplm_product($wc_product) {
         $product_id = $wc_product->get_id();
-        // Try to find existing WPLM product by looking up its linked WC product ID
-        $existing_wplm_products = get_posts([
-            'post_type'      => 'wplm_product',
-            'meta_key'       => '_wplm_wc_product_id',
-            'meta_value'     => $product_id,
-            'posts_per_page' => 1,
-            'post_status'    => 'any',
-            'fields'         => 'ids',
-        ]);
-
-        if (!empty($existing_wplm_products)) {
-            return $existing_wplm_products[0];
+        $linked_slug = get_post_meta($product_id, '_wplm_wc_linked_wplm_product', true);
+        
+        // Try to find existing WPLM product
+        if (!empty($linked_slug)) {
+            $existing_products = get_posts([
+                'post_type' => 'wplm_product',
+                'meta_key' => '_wplm_product_id',
+                'meta_value' => $linked_slug,
+                'posts_per_page' => 1,
+                'post_status' => 'any'
+            ]);
+            
+            if (!empty($existing_products)) {
+                return $existing_products[0]->ID;
+            }
         }
 
         // Create new WPLM product
         $product_title = $wc_product->get_name();
-        $product_slug = $this->generate_unique_product_slug($product_title);
+        
+        // Add WOO prefix to distinguish from WPLM store products
+        $display_title = 'WOO ' . $product_title;
+        $product_slug = sanitize_title($product_title); // Use the same slug as WooCommerce product
+        
+        // Check if a WPLM product already exists with this slug
+        $existing_wplm_product = get_posts([
+            'post_type' => 'wplm_product',
+            'name' => $product_slug,
+            'posts_per_page' => 1,
+            'post_status' => 'publish'
+        ]);
+        
+        if (!empty($existing_wplm_product)) {
+            // Use existing product
+            $existing_product = $existing_wplm_product[0];
+            update_post_meta($product_id, '_wplm_wc_linked_wplm_product', $product_slug);
+            update_post_meta($existing_product->ID, '_wplm_wc_product_id', $product_id);
+            update_post_meta($existing_product->ID, '_wplm_product_source', 'woocommerce');
+            
+            // Update title if needed
+            if (!str_starts_with($existing_product->post_title, 'WOO ')) {
+                wp_update_post([
+                    'ID' => $existing_product->ID,
+                    'post_title' => $display_title
+                ]);
+            }
+            
+            return $existing_product->ID;
+        }
         
         $wplm_product_id = wp_insert_post([
-            'post_title' => $product_title,
-            'post_name' => $product_slug, // Set post_name directly
+            'post_title' => $display_title,
+            'post_name' => $product_slug, // Use the same slug as WooCommerce product
             'post_content' => $wc_product->get_description(),
             'post_excerpt' => $wc_product->get_short_description(),
             'post_type' => 'wplm_product',
@@ -191,12 +223,13 @@ class WPLM_WooCommerce_Sync {
         }
 
         // Set product meta
+        update_post_meta($wplm_product_id, '_wplm_product_id', $product_slug);
         update_post_meta($wplm_product_id, '_wplm_product_type', 'wplm');
-        update_post_meta($wplm_product_id, '_wplm_wc_product_id', $product_id); // Link WPLM product to WC product by ID
+        update_post_meta($wplm_product_id, '_wplm_wc_product_id', $product_id);
+        update_post_meta($wplm_product_id, '_wplm_product_source', 'woocommerce');
         
-        // Link WooCommerce product to WPLM product by ID (for WC product meta)
-        update_post_meta($product_id, '_wplm_wc_linked_wplm_product_id', $wplm_product_id);
-        delete_post_meta($product_id, '_wplm_wc_linked_wplm_product'); // Remove old slug-based link
+        // Link WooCommerce product to WPLM product
+        update_post_meta($product_id, '_wplm_wc_linked_wplm_product', $product_slug);
 
         return $wplm_product_id;
     }
@@ -205,13 +238,19 @@ class WPLM_WooCommerce_Sync {
      * Sync basic product data
      */
     private function sync_basic_product_data($wc_product, $wplm_product_id) {
-        // Update post data
+        // Update post data without downgrading published WPLM products to draft
+        $current_status = get_post_status($wplm_product_id) ?: 'draft';
+        $wc_status = $wc_product->get_status();
+        // If WPLM product is already published, keep it published.
+        // Otherwise, only set to publish if Woo product is published; never force draft.
+        $new_status = ($current_status === 'publish') ? 'publish' : (($wc_status === 'publish') ? 'publish' : $current_status);
+
         wp_update_post([
             'ID' => $wplm_product_id,
             'post_title' => $wc_product->get_name(),
             'post_content' => $wc_product->get_description(),
             'post_excerpt' => $wc_product->get_short_description(),
-            'post_status' => $wc_product->get_status() === 'publish' ? 'publish' : 'draft'
+            'post_status' => $new_status
         ]);
 
         // Sync version
@@ -324,7 +363,7 @@ class WPLM_WooCommerce_Sync {
             return;
         }
 
-        $linked_slug = get_post_meta($post_id, '_wplm_wc_linked_wplm_product_id', true);
+        $linked_slug = get_post_meta($post_id, '_wplm_wc_linked_wplm_product', true);
         if (empty($linked_slug)) {
             return;
         }
@@ -332,7 +371,7 @@ class WPLM_WooCommerce_Sync {
         // Find linked WPLM product
         $wplm_products = get_posts([
             'post_type' => 'wplm_product',
-            'meta_key' => '_wplm_wc_product_id',
+            'meta_key' => '_wplm_product_id',
             'meta_value' => $linked_slug,
             'posts_per_page' => 1,
             'post_status' => 'any'
@@ -368,7 +407,7 @@ class WPLM_WooCommerce_Sync {
             return;
         }
 
-        $linked_slug = get_post_meta($post->ID, '_wplm_wc_linked_wplm_product_id', true);
+        $linked_slug = get_post_meta($post->ID, '_wplm_wc_linked_wplm_product', true);
         if (empty($linked_slug)) {
             return;
         }
@@ -376,7 +415,7 @@ class WPLM_WooCommerce_Sync {
         // Find linked WPLM product
         $wplm_products = get_posts([
             'post_type' => 'wplm_product',
-            'meta_key' => '_wplm_wc_product_id',
+            'meta_key' => '_wplm_product_id',
             'meta_value' => $linked_slug,
             'posts_per_page' => 1,
             'post_status' => 'any'
@@ -408,7 +447,7 @@ class WPLM_WooCommerce_Sync {
      * Handle unlicensed product
      */
     private function handle_unlicensed_product($product_id) {
-        $linked_slug = get_post_meta($product_id, '_wplm_wc_linked_wplm_product_id', true);
+        $linked_slug = get_post_meta($product_id, '_wplm_wc_linked_wplm_product', true);
         if (empty($linked_slug)) {
             return;
         }
@@ -417,33 +456,39 @@ class WPLM_WooCommerce_Sync {
         update_post_meta($product_id, '_wplm_sync_status', 'not_licensed');
         
         // Optionally disable associated licenses
-        $wplm_product_id = get_post_meta($product_id, '_wplm_wc_linked_wplm_product_id', true);
-        if ($wplm_product_id) {
-            $this->disable_product_licenses($wplm_product_id);
-        }
+        $this->disable_product_licenses($linked_slug);
     }
 
     /**
      * Disable licenses for a product
      */
-    private function disable_product_licenses($product_id) {
+    private function disable_product_licenses($product_slug) {
         $licenses = get_posts([
             'post_type' => 'wplm_license',
             'meta_key' => '_wplm_product_id',
-            'meta_value' => $product_id,
+            'meta_value' => $product_slug,
             'posts_per_page' => -1,
             'post_status' => 'publish'
         ]);
 
         foreach ($licenses as $license) {
+            // Get license key and activated domains before deactivating
+            $license_key = get_the_title($license->ID);
+            $activated_domains = get_post_meta($license->ID, '_wplm_activated_domains', true) ?: [];
+            
             update_post_meta($license->ID, '_wplm_status', 'inactive');
+            
+            // Trigger automatic plugin deactivation for each domain
+            foreach ($activated_domains as $domain) {
+                do_action('wplm_license_deactivated_for_plugin_deactivation', $license->ID, $domain, $license_key);
+            }
             
             if (class_exists('WPLM_Activity_Logger')) {
                 WPLM_Activity_Logger::log(
                     $license->ID,
                     'license_disabled_product_unlicensed',
-                    sprintf('License disabled because product "%s" is no longer licensed', $product_id),
-                    ['product_id' => $product_id]
+                    sprintf('License disabled because product "%s" is no longer licensed', $product_slug),
+                    ['product_slug' => $product_slug]
                 );
             }
         }
@@ -457,7 +502,7 @@ class WPLM_WooCommerce_Sync {
         $slug = $base_slug;
         $counter = 1;
 
-        while (post_exists_by_slug($slug, 'wplm_product')) { // Use helper function
+        while ($this->slug_exists($slug)) {
             $slug = $base_slug . '-' . $counter;
             $counter++;
         }
@@ -466,23 +511,18 @@ class WPLM_WooCommerce_Sync {
     }
 
     /**
-     * Check if slug exists for a given post type.
-     * Helper function, replacing slug_exists method.
-     *
-     * @param string $slug The slug to check.
-     * @param string $post_type The post type to check within.
-     * @return bool True if the slug exists, false otherwise.
+     * Check if slug exists
      */
-    private function post_exists_by_slug(string $slug, string $post_type): bool {
-        $args = [
-            'name'           => $slug,
-            'post_type'      => $post_type,
-            'post_status'    => 'any',
+    private function slug_exists($slug) {
+        $existing = get_posts([
+            'post_type' => 'wplm_product',
+            'meta_key' => '_wplm_product_id',
+            'meta_value' => $slug,
             'posts_per_page' => 1,
-            'fields'         => 'ids',
-        ];
-        $query = new WP_Query($args);
-        return $query->have_posts();
+            'post_status' => 'any'
+        ]);
+
+        return !empty($existing);
     }
 
     /**
@@ -533,7 +573,7 @@ class WPLM_WooCommerce_Sync {
         $is_licensed = get_post_meta($post->ID, '_wplm_wc_is_licensed_product', true);
         $sync_status = get_post_meta($post->ID, '_wplm_sync_status', true);
         $last_sync = get_post_meta($post->ID, '_wplm_last_sync', true);
-        $linked_slug = get_post_meta($post->ID, '_wplm_wc_linked_wplm_product_id', true);
+        $linked_slug = get_post_meta($post->ID, '_wplm_wc_linked_wplm_product', true);
 
         ?>
         <div class="wplm-sync-status">

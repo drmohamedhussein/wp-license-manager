@@ -12,6 +12,18 @@ class WPLM_REST_API_Manager {
 
     public function __construct() {
         add_action('rest_api_init', [$this, 'register_routes']);
+        
+        // Ensure sessions are closed before REST API requests
+        add_action('rest_api_init', [$this, 'close_sessions_for_rest_api']);
+    }
+    
+    /**
+     * Close any active sessions before REST API requests
+     */
+    public function close_sessions_for_rest_api() {
+        if (session_id()) {
+            session_write_close();
+        }
     }
 
     /**
@@ -222,7 +234,7 @@ class WPLM_REST_API_Manager {
 
         // Check API key
         $api_key = $request->get_header('X-API-Key') ?: $request->get_param('api_key');
-        $stored_api_key = get_option('wplm_api_key');
+        $stored_api_key = get_option('wplm_api_key', '');
 
         if (empty($api_key) || empty($stored_api_key) || !hash_equals($stored_api_key, $api_key)) {
             return new WP_Error('invalid_api_key', 'Invalid API key', ['status' => 401]);
@@ -323,7 +335,7 @@ class WPLM_REST_API_Manager {
      */
     public function get_license_by_key($request) {
         $license_key = $request->get_param('key');
-        $license = get_page_by_title($license_key, OBJECT, 'wplm_license');
+        $license = wplm_get_post_by_title($license_key, 'wplm_license');
 
         if (!$license) {
             return new WP_Error('license_not_found', 'License not found', ['status' => 404]);
@@ -351,9 +363,21 @@ class WPLM_REST_API_Manager {
             // Generate unique license key
             $license_key = $this->generate_license_key();
             $attempts = 0;
-            while (get_page_by_title($license_key, OBJECT, 'wplm_license') && $attempts < 5) {
+            $license_posts = get_posts([
+                'post_type' => 'wplm_license',
+                'title' => $license_key,
+                'posts_per_page' => 1,
+                'post_status' => 'publish'
+            ]);
+            while (!empty($license_posts) && $attempts < 5) {
                 $attempts++;
                 $license_key = $this->generate_license_key();
+                $license_posts = get_posts([
+                    'post_type' => 'wplm_license',
+                    'title' => $license_key,
+                    'posts_per_page' => 1,
+                    'post_status' => 'publish'
+                ]);
             }
 
             // Create license post
@@ -410,10 +434,16 @@ class WPLM_REST_API_Manager {
         $version = $request->get_param('version');
 
         // Find license
-        $license = get_page_by_title($license_key, OBJECT, 'wplm_license');
-        if (!$license) {
+        $license_posts = get_posts([
+            'post_type' => 'wplm_license',
+            'title' => $license_key,
+            'posts_per_page' => 1,
+            'post_status' => 'publish'
+        ]);
+        if (empty($license_posts)) {
             return new WP_Error('invalid_license', 'Invalid license key', ['status' => 404]);
         }
+        $license = $license_posts[0];
 
         // Check status
         $status = get_post_meta($license->ID, '_wplm_status', true);
@@ -427,10 +457,31 @@ class WPLM_REST_API_Manager {
             return new WP_Error('license_expired', 'License has expired', ['status' => 403]);
         }
 
-        // Check product match
+        // Check product match with improved logic
         $license_product = get_post_meta($license->ID, '_wplm_product_id', true);
-        if ($license_product !== $product_id) {
-            return new WP_Error('product_mismatch', 'License not valid for this product', ['status' => 403]);
+        $product_match = false;
+        
+        // Direct match
+        if ($license_product === $product_id) {
+            $product_match = true;
+        } else {
+            // Try to find WPLM product by the provided product_id
+            $wplm_product = get_page_by_title($product_id, OBJECT, 'wplm_product');
+            if ($wplm_product && $wplm_product->post_name === $license_product) {
+                $product_match = true;
+            } else {
+                // Check if product_id is a WPLM product ID
+                $wplm_product_by_id = get_post($product_id);
+                if ($wplm_product_by_id && $wplm_product_by_id->post_type === 'wplm_product') {
+                    if ($wplm_product_by_id->post_name === $license_product) {
+                        $product_match = true;
+                    }
+                }
+            }
+        }
+        
+        if (!$product_match) {
+            return new WP_Error('product_mismatch', 'License not valid for this product. Expected: ' . $license_product . ', Received: ' . $product_id, ['status' => 403]);
         }
 
         // Check activation limit
@@ -438,7 +489,7 @@ class WPLM_REST_API_Manager {
         $activation_limit = get_post_meta($license->ID, '_wplm_activation_limit', true) ?: 1;
 
         if (!in_array($domain, $activated_domains)) {
-            if (count($activated_domains) >= $activation_limit) {
+            if (count($activated_domains) >= $activation_limit && $activation_limit !== -1) {
                 return new WP_Error('activation_limit_exceeded', 'Activation limit exceeded', ['status' => 403]);
             }
             
@@ -464,7 +515,7 @@ class WPLM_REST_API_Manager {
             'message' => 'License activated successfully',
             'license_key' => $license_key,
             'expires' => $expiry_date ?: 'never',
-            'activations_remaining' => $activation_limit - count($activated_domains)
+            'activations_remaining' => $activation_limit === -1 ? 'unlimited' : ($activation_limit - count($activated_domains))
         ]);
     }
 
@@ -476,10 +527,16 @@ class WPLM_REST_API_Manager {
         $domain = $request->get_param('domain');
 
         // Find license
-        $license = get_page_by_title($license_key, OBJECT, 'wplm_license');
-        if (!$license) {
+        $license_posts = get_posts([
+            'post_type' => 'wplm_license',
+            'title' => $license_key,
+            'posts_per_page' => 1,
+            'post_status' => 'publish'
+        ]);
+        if (empty($license_posts)) {
             return new WP_Error('invalid_license', 'Invalid license key', ['status' => 404]);
         }
+        $license = $license_posts[0];
 
         // Remove domain from activated domains
         $activated_domains = get_post_meta($license->ID, '_wplm_activated_domains', true) ?: [];
@@ -496,6 +553,9 @@ class WPLM_REST_API_Manager {
 
         // Send notification
         do_action('wplm_license_deactivated', $license->ID, $domain);
+        
+        // Trigger automatic plugin deactivation
+        do_action('wplm_license_deactivated_for_plugin_deactivation', $license->ID, $domain, $license_key);
 
         return rest_ensure_response([
             'success' => true,
@@ -542,19 +602,53 @@ class WPLM_REST_API_Manager {
             ]);
         }
 
-        // Check product match
+        // Check product match with improved logic
         $license_product = get_post_meta($license->ID, '_wplm_product_id', true);
-        if ($license_product !== $product_id) {
+        $product_match = false;
+        
+        // Direct match
+        if ($license_product === $product_id) {
+            $product_match = true;
+        } else {
+            // Try to find WPLM product by the provided product_id
+            $wplm_product = get_posts([
+                'post_type' => 'wplm_product',
+                'name' => $product_id,
+                'posts_per_page' => 1,
+                'post_status' => 'publish'
+            ]);
+            
+            if (!empty($wplm_product)) {
+                $wplm_product_slug = get_post_meta($wplm_product[0]->ID, '_wplm_product_id', true);
+                if ($wplm_product_slug === $license_product) {
+                    $product_match = true;
+                }
+            } else {
+                // Check if product_id is a WPLM product ID
+                $wplm_product_by_id = get_post($product_id);
+                if ($wplm_product_by_id && $wplm_product_by_id->post_type === 'wplm_product') {
+                    $wplm_product_slug = get_post_meta($wplm_product_by_id->ID, '_wplm_product_id', true);
+                    if ($wplm_product_slug === $license_product) {
+                        $product_match = true;
+                    }
+                }
+            }
+        }
+        
+        if (!$product_match) {
             return rest_ensure_response([
                 'valid' => false,
                 'error' => 'product_mismatch',
-                'message' => 'License not valid for this product'
+                'message' => 'License not valid for this product. Expected: ' . $license_product . ', Received: ' . $product_id
             ]);
         }
 
         // Check domain activation
         $activated_domains = get_post_meta($license->ID, '_wplm_activated_domains', true) ?: [];
-        if (!in_array($domain, $activated_domains)) {
+        $activation_limit = get_post_meta($license->ID, '_wplm_activation_limit', true) ?: 1;
+        
+        // If activation limit is unlimited (-1), skip domain enforcement
+        if ($activation_limit !== -1 && !in_array($domain, $activated_domains)) {
             return rest_ensure_response([
                 'valid' => false,
                 'error' => 'domain_not_activated',
@@ -577,10 +671,16 @@ class WPLM_REST_API_Manager {
         $license_key = $request->get_param('license_key');
 
         // Find license
-        $license = get_page_by_title($license_key, OBJECT, 'wplm_license');
-        if (!$license) {
+        $license_posts = get_posts([
+            'post_type' => 'wplm_license',
+            'title' => $license_key,
+            'posts_per_page' => 1,
+            'post_status' => 'publish'
+        ]);
+        if (empty($license_posts)) {
             return new WP_Error('invalid_license', 'Invalid license key', ['status' => 404]);
         }
+        $license = $license_posts[0];
 
         return rest_ensure_response($this->prepare_license_response($license));
     }

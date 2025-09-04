@@ -256,7 +256,7 @@ class WPLM_Email_Notification_System {
      * Send admin notification for license limit reached
      */
     public function send_admin_limit_notification($license_id, $attempted_domain) {
-        $admin_email = get_option('admin_email');
+        $admin_email = get_option('admin_email', '');
         $license = get_post($license_id);
         if (!$license) return;
 
@@ -283,7 +283,7 @@ class WPLM_Email_Notification_System {
      * Send admin security notification
      */
     public function send_admin_security_notification($license_id, $activity_details) {
-        $admin_email = get_option('admin_email');
+        $admin_email = get_option('admin_email', '');
         $license = get_post($license_id);
         if (!$license) return;
 
@@ -367,7 +367,7 @@ class WPLM_Email_Notification_System {
 
         $headers = [
             'Content-Type: text/html; charset=UTF-8',
-            'From: ' . get_option('wplm_from_name', get_bloginfo('name')) . ' <' . get_option('wplm_from_email', get_option('admin_email')) . '>'
+            'From: ' . get_option('wplm_from_name', get_bloginfo('name')) . ' <' . get_option('wplm_from_email', get_option('admin_email', '')) . '>'
         ];
 
         $result = wp_mail($to, $subject, $template_content, $headers);
@@ -605,15 +605,20 @@ class WPLM_Email_Notification_System {
     private function get_product_name($product_id) {
         if (empty($product_id)) return __('Unknown Product', 'wp-license-manager');
         
-        $product = get_page_by_title($product_id, OBJECT, 'wplm_product');
-        return $product ? $product->post_title : $product_id;
+        $product_posts = get_posts([
+            'post_type' => 'wplm_product',
+            'title' => $product_id,
+            'posts_per_page' => 1,
+            'post_status' => 'publish'
+        ]);
+        return !empty($product_posts) ? $product_posts[0]->post_title : $product_id;
     }
 
     /**
      * Get renewal URL for license
      */
     private function get_renewal_url($license_id) {
-        $renewal_url = get_option('wplm_renewal_url');
+        $renewal_url = get_option('wplm_renewal_url', '');
         if ($renewal_url) {
             return add_query_arg('license_id', $license_id, $renewal_url);
         }

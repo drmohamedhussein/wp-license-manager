@@ -15,11 +15,24 @@
             this.initSubscriptionActions();
             this.initCustomerActions();
             this.initActivityLogActions();
+
+            // Debug: surface obvious setup issues
+            if (typeof window.wplm_admin_vars === 'undefined') {
+                console.error('WPLM: wplm_admin_vars is undefined. Script localization did not run.');
+            } else {
+                // Minimal key fields to verify at runtime
+                if (!wplm_admin_vars.ajaxurl) {
+                    console.error('WPLM: ajaxurl is missing in wplm_admin_vars.');
+                }
+            }
         },
 
         bindEvents: function() {
             // License key generation
             $(document).on('click', '#wplm-generate-key', this.generateLicenseKey);
+            
+            // Prevent duplicate form submission after license generation
+            $(document).on('submit', '#post', this.preventDuplicateSubmission);
             
             // API key generation
             $(document).on('click', '#wplm-generate-new-api-key', this.generateApiKey);
@@ -42,14 +55,6 @@
             $(document).on('click', '#wplm-filter-activity', this.filterActivityLog);
             $(document).on('click', '#wplm-clear-activity', this.clearActivityLog);
             
-            // Subscription filters and actions
-            $(document).on('click', '#wplm-filter-subscriptions', this.filterSubscriptions);
-            $(document).on('keypress', '#wplm-subscription-search', function(e) {
-                if (e.which === 13) {
-                    WPLM_Admin.filterSubscriptions();
-                }
-            });
-
             // Form validation
             $(document).on('submit', '.wplm-form', this.validateForm);
             
@@ -58,16 +63,47 @@
             $(document).on('change', '#_wplm_wc_is_licensed_product', this.toggleLicenseFields);
         },
 
+        preventDuplicateSubmission: function(e) {
+            // Check if a license was just generated via AJAX
+            if (window.wplm_license_generated && $('#post_type').val() === 'wplm_license') {
+                var licenseKey = $('#title').val();
+                if (licenseKey && licenseKey.length > 0) {
+                    // Show warning and prevent submission
+                    if (!confirm('A license has already been generated via AJAX. Submitting this form may create a duplicate. Do you want to continue?')) {
+                        e.preventDefault();
+                        return false;
+                    }
+                }
+            }
+        },
+
         generateLicenseKey: function(e) {
             e.preventDefault();
             
             var $button = $(this);
+            if (typeof window.wplm_admin_vars === 'undefined') {
+                alert('WP License Manager: Script not initialized properly. Please hard refresh (Ctrl/Cmd + Shift + R) and try again.');
+                console.error('WPLM: wplm_admin_vars is undefined at click time.');
+                return;
+            }
+
             var postId = $button.data('post-id') || wplm_admin_vars.generate_key_post_id || 0;
-            // For new posts, use the create license nonce
-            // For existing posts, use the pre-generated post edit nonce
-            var nonce = postId === 0 ? wplm_admin_vars.create_license_nonce : 
-                       (wplm_admin_vars.post_edit_nonce || wplm_admin_vars.create_license_nonce);
             
+            // Generate nonce dynamically using WordPress's built-in nonce generation
+            var nonce = '';
+            if (postId === 0) {
+                // For new posts, use a simple nonce that doesn't expire
+                nonce = wplm_admin_vars.create_license_nonce;
+            } else {
+                // For existing posts, use post-specific nonce
+                nonce = wplm_admin_vars.post_edit_nonce || wplm_admin_vars.create_license_nonce;
+            }
+            
+            // Debug traces
+            console.log('WPLM: Generate clicked. postId=', postId);
+            console.log('WPLM: Using nonce=', nonce);
+            console.log('WPLM: AJAX URL=', wplm_admin_vars.ajaxurl);
+
             $button.prop('disabled', true).text(wplm_admin_vars.generating_text || 'Generating...');
             
             $.ajax({
@@ -83,20 +119,33 @@
                     activation_limit: $('#wplm_activation_limit').val()
                 },
                 success: function(response) {
+                    console.log('WPLM: AJAX success response:', response);
                     if (response.success) {
                         $('#wplm-generated-key').text(response.data.key);
+                        // Set the generated key as the title
+                        $('#title').val(response.data.key);
                         WPLM_Admin.showNotification('License key generated successfully!', 'success');
                         
-                        // If this was a new post, redirect to edit page
+                        // If this was a new post, show success message and let user save manually
                         if (postId === 0 && response.data.post_id) {
-                            window.location.href = wplm_admin_vars.edit_post_url + '&post=' + response.data.post_id + '&action=edit';
+                            WPLM_Admin.showNotification('License created! You can now save the post or continue editing.', 'success');
+                            // Set a flag to prevent duplicate form submission
+                            window.wplm_license_generated = true;
                         }
                     } else {
+                        console.error('WPLM: AJAX logical error:', response);
                         WPLM_Admin.showNotification(response.data.message || 'Failed to generate license key', 'error');
                     }
                 },
-                error: function() {
-                    WPLM_Admin.showNotification('An error occurred while generating the license key', 'error');
+                error: function(xhr, status, error) {
+                    console.error('WPLM: AJAX transport error:', status, error, xhr);
+                    var msg = 'An error occurred while generating the license key';
+                    if (xhr && xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) {
+                        msg = xhr.responseJSON.data.message;
+                    } else if (xhr && xhr.responseText) {
+                        msg = 'Server: ' + xhr.responseText.substring(0, 200);
+                    }
+                    WPLM_Admin.showNotification(msg, 'error');
                 },
                 complete: function() {
                     $button.prop('disabled', false).text('Generate Key');
@@ -222,7 +271,7 @@
             var dateTo = $('#wplm-activity-date-to').val();
             
             // Show loading
-            $('.wplm-activity-log').html('<div class="wplm-loading"><span class="wplm-spinner"></span> ' + wplm_admin_vars.filtering_text + '</div>');
+            $('.wplm-activity-log').html('<div class="wplm-loading"><span class="wplm-spinner"></span> Filtering...</div>');
             
             $.ajax({
                 url: wplm_admin_vars.ajaxurl,
@@ -238,19 +287,17 @@
                     if (response.success) {
                         $('.wplm-activity-log').html(response.data.html);
                     } else {
-                        $('.wplm-activity-log').html('<p class="wplm-error-message">' + (response.data.message || wplm_admin_vars.filter_failed_text) + '</p>');
-                        WPLM_Admin.showNotification(response.data.message || wplm_admin_vars.filter_failed_text, 'error');
+                        WPLM_Admin.showNotification(response.data.message || 'Filter failed', 'error');
                     }
                 },
                 error: function() {
-                    $('.wplm-activity-log').html('<p class="wplm-error-message">' + wplm_admin_vars.filter_error_text + '</p>');
-                    WPLM_Admin.showNotification(wplm_admin_vars.filter_error_text, 'error');
+                    WPLM_Admin.showNotification('Filter error occurred', 'error');
                 }
             });
         },
 
         clearActivityLog: function() {
-            if (!confirm(wplm_admin_vars.confirm_clear_log_text)) {
+            if (!confirm('Are you sure you want to clear the activity log? This action cannot be undone.')) {
                 return;
             }
             
@@ -345,8 +392,8 @@
             // Remove existing notifications
             $('.wplm-notification').remove();
             
-            // Add new notification to the unified notification area
-            $('.wplm-admin-notices').first().prepend($notification);
+            // Add new notification
+            $('.wrap').first().prepend($notification);
             
             // Auto hide after 5 seconds
             setTimeout(function() {
@@ -358,47 +405,32 @@
 
         initDashboardCharts: function() {
             // Initialize charts if Chart.js is available
-            if (typeof Chart !== 'undefined' && $('#wplm-license-status-chart').length) {
+            if (typeof Chart !== 'undefined' && $('#wplm-license-chart').length) {
                 this.createLicenseChart();
             }
         },
 
         createLicenseChart: function() {
-            var ctx = document.getElementById('wplm-license-status-chart').getContext('2d');
+            var ctx = document.getElementById('wplm-license-chart').getContext('2d');
             
-            // Use localized data for the chart
-            var activeLicenses = wplm_dashboard_vars.stats.active_licenses;
-            var inactiveLicenses = wplm_dashboard_vars.stats.inactive_licenses;
-            var expiredLicenses = wplm_dashboard_vars.stats.expired_licenses;
-
+            // Sample data - in real implementation, this would come from the server
             var chart = new Chart(ctx, {
-                type: 'doughnut',
+                type: 'line',
                 data: {
-                    labels: [
-                        wplm_admin_vars.active_text,
-                        wplm_admin_vars.inactive_text,
-                        wplm_admin_vars.expired_text
-                    ],
+                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
                     datasets: [{
-                        data: [
-                            activeLicenses,
-                            inactiveLicenses,
-                            expiredLicenses
-                        ],
-                        backgroundColor: [
-                            '#28a745',
-                            '#6c757d',
-                            '#dc3545'
-                        ],
-                        borderWidth: 0
+                        label: 'Licenses Created',
+                        data: [12, 19, 3, 5, 2, 3],
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        tension: 0.4
                     }]
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom'
+                    scales: {
+                        y: {
+                            beginAtZero: true
                         }
                     }
                 }
@@ -569,62 +601,7 @@
                     }
                 }
             });
-        },
-
-        filterSubscriptions: function() {
-            var $list = $('#wplm-subscriptions-list');
-            var status = $('#wplm-subscription-status-filter').val();
-            var search = $('#wplm-subscription-search').val();
-
-            $list.html('<tr><td colspan="7" class="wplm-loading-cell"><div class="wplm-loading-spinner"><span class="wplm-spinner"></span> ' + wplm_admin_vars.loading_subscriptions_text + '</div></td></tr>');
-
-            $.ajax({
-                url: wplm_admin_vars.ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'wplm_filter_subscriptions',
-                    nonce: wp.create_nonce('wplm_filter_subscriptions'),
-                    status: status,
-                    search: search,
-                },
-                success: function(response) {
-                    if (response.success) {
-                        var html = '';
-                        if (response.data.subscriptions && response.data.subscriptions.length > 0) {
-                            response.data.subscriptions.forEach(function(subscription) {
-                                html += `
-                                    <tr>
-                                        <td>${subscription.id}</td>
-                                        <td><a href="${subscription.customer_edit_link}">${subscription.customer_name}</a></td>
-                                        <td>${subscription.product_name}</td>
-                                        <td><span class="wplm-status wplm-status--${subscription.status_slug}">${subscription.status_text}</span></td>
-                                        <td>${subscription.start_date}</td>
-                                        <td>${subscription.next_payment_date}</td>
-                                        <td>
-                                            <button type="button" class="button button-small wplm-subscription-action" data-action="view" data-subscription-id="${subscription.id}">${wplm_admin_vars.view_text}</button>
-                                            ${subscription.can_cancel ? `<button type="button" class="button button-small wplm-subscription-action" data-action="cancel" data-subscription-id="${subscription.id}" data-confirm="${wplm_admin_vars.confirm_cancel_subscription_text}">${wplm_admin_vars.cancel_text}</button>` : ''}
-                                            ${subscription.can_reactivate ? `<button type="button" class="button button-small wplm-subscription-action" data-action="reactivate" data-subscription-id="${subscription.id}" data-confirm="${wplm_admin_vars.confirm_reactivate_subscription_text}">${wplm_admin_vars.reactivate_text}</button>` : ''}
-                                        </td>
-                                    </tr>
-                                `;
-                            });
-                        } else {
-                            html = `<tr><td colspan="7" class="wplm-no-subscriptions-found">${wplm_admin_vars.no_subscriptions_found_text}</td></tr>`;
-                        }
-                        $list.html(html);
-                        // Update pagination (needs to be implemented based on response.data.pagination if available)
-                    } else {
-                        $list.html('<tr><td colspan="7" class="wplm-error-cell"><p>' + (response.data.message || wplm_admin_vars.error_loading_subscriptions_text) + '</p></td></tr>');
-                        WPLM_Admin.showNotification(response.data.message || wplm_admin_vars.error_loading_subscriptions_text, 'error');
-                    }
-                },
-                error: function() {
-                    $list.html('<tr><td colspan="7" class="wplm-error-cell"><p>' + wplm_admin_vars.error_loading_subscriptions_text + '</p></td></tr>');
-                    WPLM_Admin.showNotification(wplm_admin_vars.error_loading_subscriptions_text, 'error');
-                }
-            });
-        },
-
+        }
     };
 
     // Initialize when document is ready
@@ -634,212 +611,5 @@
 
     // Make WPLM_Admin globally available
     window.WPLM_Admin = WPLM_Admin;
-
-    // Dropdown toggles (moved from customers.php)
-    $(document).on('click keypress', '.wplm-dropdown-toggle', function(e) {
-        if (e.type === 'keypress' && e.which !== 13 && e.which !== 32) return; // Only Enter/Space for keypress
-        e.preventDefault();
-        e.stopPropagation();
-        
-        var $toggle = $(this);
-        var $menu = $toggle.siblings('.wplm-dropdown-menu');
-
-        // Toggle aria-expanded attribute
-        var isExpanded = $toggle.attr('aria-expanded') === 'true';
-        $toggle.attr('aria-expanded', !isExpanded);
-
-        // Hide all other dropdowns
-        $('.wplm-dropdown-menu').not($menu).hide();
-        $('.wplm-dropdown-toggle').not($toggle).attr('aria-expanded', 'false');
-        
-        $menu.toggle();
-
-        // If opening, focus on the first item
-        if ($menu.is(':visible')) {
-            $menu.find('.wplm-dropdown-item').first().focus();
-        }
-    });
-    
-    // Close dropdowns when clicking elsewhere (moved from customers.php)
-    $(document).on('click', function() {
-        $('.wplm-dropdown-menu').hide();
-        $('.wplm-dropdown-toggle').attr('aria-expanded', 'false');
-    });
-    
-    // Keyboard navigation for dropdowns
-    $(document).on('keydown', '.wplm-dropdown-menu', function(e) {
-        var $menu = $(this);
-        var $items = $menu.find('.wplm-dropdown-item:visible');
-        var $focusedItem = $(document.activeElement);
-        var focusedIndex = $items.index($focusedItem);
-
-        switch (e.which) {
-            case 38: // Up arrow
-                e.preventDefault();
-                var newIndex = focusedIndex - 1;
-                if (newIndex < 0) newIndex = $items.length - 1; // Loop to last
-                $items.eq(newIndex).focus();
-                break;
-            case 40: // Down arrow
-                e.preventDefault();
-                var newIndex = focusedIndex + 1;
-                if (newIndex >= $items.length) newIndex = 0; // Loop to first
-                $items.eq(newIndex).focus();
-                break;
-            case 27: // Escape
-                e.preventDefault();
-                $menu.hide();
-                $menu.siblings('.wplm-dropdown-toggle').focus().attr('aria-expanded', 'false');
-                break;
-            case 13: // Enter
-            case 32: // Space
-                e.preventDefault();
-                $focusedItem.click(); // Trigger click on focused item
-                break;
-        }
-    });
-
-    // View customer modal (moved from customers.php)
-    $(document).on('click', '.wplm-view-customer', function() {
-        var customerEmail = $(this).data('customer-email');
-        WPLM_Admin.loadCustomerDetails(customerEmail);
-        $('#wplm-customer-modal').attr('aria-hidden', 'false').show();
-        $('#wplm-customer-modal').focus(); // Focus the modal itself
-        WPLM_Admin.trapFocus($('#wplm-customer-modal'));
-    });
-    
-    // Close modal (moved from customers.php)
-    $(document).on('click keydown', '.wplm-modal-close, #wplm-customer-modal', function(e) {
-        if (e.type === 'click' && e.target === this || (e.type === 'keydown' && e.which === 27)) {
-            e.preventDefault();
-            $('#wplm-customer-modal').attr('aria-hidden', 'true').hide();
-            // Restore focus to the element that opened the modal (if applicable)
-            // This would require storing the triggering element's focus before opening the modal.
-        }
-    });
-    
-    // Trap focus inside modal (new function)
-    WPLM_Admin.trapFocus = function($modal) {
-        var focusableElements = $modal.find('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])').filter(':visible');
-        var firstFocusableElement = focusableElements.first();
-        var lastFocusableElement = focusableElements.last();
-
-        $modal.on('keydown.wplmFocusTrap', function(e) {
-            if (e.which === 9) { // TAB key
-                if (e.shiftKey) { // SHIFT + TAB
-                    if ($(document.activeElement).is(firstFocusableElement)) {
-                        lastFocusableElement.focus();
-                        e.preventDefault();
-                    }
-                } else { // TAB
-                    if ($(document.activeElement).is(lastFocusableElement)) {
-                        firstFocusableElement.focus();
-                        e.preventDefault();
-                    }
-                }
-            }
-        });
-    };
-
-    // Export customers (moved from customers.php)
-    $(document).on('click', '#wplm-export-customers', function() {
-        window.location.href = wplm_admin_vars.ajaxurl + '?action=wplm_export_customers&_wpnonce=' + wplm_admin_vars.nonce;
-    });
-    
-    // Export individual customer data (moved from customers.php)
-    $(document).on('click', '.wplm-export-customer-data', function() {
-        var customerEmail = $(this).data('customer-email');
-        window.location.href = wplm_admin_vars.ajaxurl + '?action=wplm_export_customer_data&customer_email=' + encodeURIComponent(customerEmail) + '&_wpnonce=' + wplm_admin_vars.nonce;
-    });
-
-    // Customer Details AJAX function (moved from customers.php)
-    WPLM_Admin.loadCustomerDetails = function(customerEmail) {
-        $.ajax({
-            url: wplm_admin_vars.ajaxurl,
-            type: 'POST',
-            data: {
-                action: 'wplm_get_customer_details',
-                customer_email: customerEmail,
-                _wpnonce: wplm_admin_vars.nonce
-            },
-            beforeSend: function() {
-                $('#wplm-customer-modal .wplm-modal-body').html('<p>' + wplm_admin_vars.loading_text + '</p>');
-            },
-            success: function(response) {
-                if (response.success) {
-                    // Render details from JSON data
-                    var customer = response.data.customer;
-                    var licenses = response.data.licenses;
-                    var html = WPLM_Admin.renderCustomerDetails(customer, licenses);
-                    $('#wplm-customer-modal .wplm-modal-body').html(html);
-                } else {
-                    $('#wplm-customer-modal .wplm-modal-body').html('<p>' + (response.data.message || wplm_admin_vars.error_loading_text) + '</p>');
-                }
-            },
-            error: function() {
-                $('#wplm-customer-modal .wplm-modal-body').html('<p>' + wplm_admin_vars.error_loading_text + '</p>');
-            }
-        });
-    };
-
-    // Function to render customer details from JSON (new function)
-    WPLM_Admin.renderCustomerDetails = function(customer, licenses) {
-        var html = `
-            <div class="wplm-customer-detail-header">
-                <div class="wplm-customer-avatar">${customer.avatar}</div>
-                <div class="wplm-customer-info">
-                    <h3>${customer.name}</h3>
-                    <p><a href="mailto:${customer.email}">${customer.email}</a></p>
-                    ${customer.wc_profile_link ? `<p><a href="${customer.wc_profile_link}" target="_blank"><span class="dashicons dashicons-admin-users"></span> ${wplm_admin_vars.wc_customer_text}</a></p>` : ''}
-                </div>
-            </div>
-            <div class="wplm-customer-stats-grid">
-                <div class="wplm-stat-card">
-                    <h4>${wplm_admin_vars.total_licenses_text}</h4>
-                    <p>${customer.total_licenses}</p>
-                </div>
-                <div class="wplm-stat-card">
-                    <h4>${wplm_admin_vars.active_licenses_text}</h4>
-                    <p>${customer.active_licenses}</p>
-                </div>
-                <div class="wplm-stat-card">
-                    <h4>${wplm_admin_vars.total_value_text}</h4>
-                    <p>${customer.total_value}</p>
-                </div>
-                <div class="wplm-stat-card">
-                    <h4>${wplm_admin_vars.registered_on_text}</h4>
-                    <p>${customer.registered_on}</p>
-                </div>
-            </div>
-            <div class="wplm-customer-licenses">
-                <h4>${wplm_admin_vars.licenses_text}</h4>
-                ${licenses.length > 0 ? `
-                    <table class="wplm-customer-licenses-table">
-                        <thead>
-                            <tr>
-                                <th>${wplm_admin_vars.license_key_text}</th>
-                                <th>${wplm_admin_vars.product_text}</th>
-                                <th>${wplm_admin_vars.status_text}</th>
-                                <th>${wplm_admin_vars.expiry_text}</th>
-                                <th>${wplm_admin_vars.activations_text}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${licenses.map(license => `
-                                <tr>
-                                    <td>${license.license_key_short}</td>
-                                    <td>${license.product_name}</td>
-                                    <td><span class="wplm-status wplm-status--${license.status}">${license.status_text}</span></td>
-                                    <td>${license.expiry_date}</td>
-                                    <td>${license.activation_count}/${license.activation_limit}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                ` : `<p>${wplm_admin_vars.no_licenses_text}</p>`}
-            </div>
-        `;
-        return html;
-    };
 
 })(jQuery);

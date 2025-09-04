@@ -71,6 +71,10 @@
     background: #f1f1f1;
     min-height: 100vh;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
 }
 
 /* Header Styles */
@@ -85,6 +89,9 @@
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .wplm-main-title {
@@ -240,6 +247,9 @@
     box-shadow: 0 2px 15px rgba(0, 0, 0, 0.08);
     margin-bottom: 30px;
     overflow: hidden;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .wplm-section-header {
@@ -255,6 +265,64 @@
     margin: 0;
     font-size: 1.3em;
     color: #2c3e50;
+    font-weight: 500;
+}
+
+/* WooCommerce Sync Section */
+.wplm-sync-section {
+    padding: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.wplm-sync-info {
+    flex: 1;
+    min-width: 300px;
+}
+
+.wplm-sync-info h3 {
+    margin: 0 0 8px 0;
+    font-size: 1.2em;
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.wplm-sync-info p {
+    margin: 0;
+    color: #6c757d;
+    font-size: 0.95em;
+    line-height: 1.5;
+}
+
+.wplm-sync-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+/* Sync Status Styling */
+.wplm-sync-status {
+    margin-top: 10px;
+    font-size: 14px;
+    width: 100%;
+}
+
+.wplm-sync-progress {
+    color: #0073aa;
+    font-weight: 500;
+}
+
+.wplm-sync-success {
+    color: #46b450;
+    font-weight: 500;
+}
+
+.wplm-sync-error {
+    color: #dc3232;
     font-weight: 500;
 }
 
@@ -375,12 +443,17 @@
     box-shadow: 0 2px 15px rgba(0, 0, 0, 0.08);
     overflow: hidden;
     margin-bottom: 30px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 15px;
 }
 
 .wplm-enhanced-table {
     width: 100%;
     border-collapse: collapse;
     margin: 0;
+    table-layout: auto;
 }
 
 .wplm-enhanced-table thead {
@@ -394,12 +467,14 @@
     color: #2c3e50;
     border-bottom: 2px solid #e9ecef;
     font-size: 0.95em;
+    white-space: nowrap;
 }
 
 .wplm-enhanced-table td {
     padding: 15px 20px;
     border-bottom: 1px solid #f1f1f1;
     color: #2c3e50;
+    vertical-align: middle;
 }
 
 .wplm-enhanced-table tbody tr:hover {
@@ -419,6 +494,9 @@
     align-items: center;
     gap: 20px;
     flex-wrap: wrap;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .wplm-filter-group {
@@ -671,6 +749,31 @@
         justify-content: space-between;
     }
     
+    .wplm-sync-section {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 15px;
+    }
+    
+    .wplm-sync-info {
+        min-width: auto;
+    }
+    
+    .wplm-sync-actions {
+        justify-content: center;
+    }
+    
+    .wplm-table-container {
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    
+    .wplm-enhanced-table th,
+    .wplm-enhanced-table td {
+        padding: 8px 10px !important;
+        font-size: 0.9em;
+    }
+    
     .wplm-modal-content {
         width: 95%;
         margin: 20px;
@@ -714,6 +817,22 @@
     
     .wplm-enhanced-table tbody tr:hover {
         background-color: #404040;
+    }
+}
+
+/* Large Screen Optimization */
+@media (min-width: 1200px) {
+    .wplm-enhanced-admin-wrap {
+        padding: 30px;
+    }
+    
+    .wplm-table-container {
+        margin-bottom: 40px;
+    }
+    
+    .wplm-enhanced-table th,
+    .wplm-enhanced-table td {
+        padding: 12px 18px !important;
     }
 }
 
@@ -781,3 +900,128 @@
     }
 }
 
+/* Bulk Actions Styles - Now integrated into filter groups */
+.wplm-filter-group select {
+    min-width: 150px;
+    height: 35px;
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    padding: 0 10px;
+    background: #fff;
+}
+
+.wplm-filter-group button {
+    height: 35px;
+    padding: 0 15px;
+    background: #f6f7f7;
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    color: #2c3338;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.wplm-filter-group button:hover {
+    background: #f0f0f1;
+    border-color: #8c8f94;
+}
+
+.wplm-filter-group button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Checkbox Column Styles */
+.wplm-checkbox-column {
+    width: 30px !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+    padding: 8px 4px !important;
+    min-width: 30px !important;
+}
+
+.wplm-checkbox-column input[type="checkbox"] {
+    margin: 0 !important;
+    vertical-align: middle !important;
+    display: inline-block !important;
+}
+
+.wplm-select-all {
+    margin: 0 !important;
+}
+
+/* Ensure DataTables checkbox column is properly aligned */
+.dataTables_wrapper .wplm-checkbox-column {
+    width: 30px !important;
+    min-width: 30px !important;
+    max-width: 30px !important;
+}
+
+/* RTL Support for Filter Groups (including bulk actions) */
+[dir="rtl"] .wplm-filter-group {
+    flex-direction: row-reverse;
+}
+
+[dir="rtl"] .wplm-filter-group select {
+    text-align: right;
+}
+
+/* Enhanced Table Styles */
+.wplm-enhanced-table {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: auto !important;
+    box-sizing: border-box !important;
+}
+
+.wplm-enhanced-table th,
+.wplm-enhanced-table td {
+    padding: 10px 15px !important;
+    border: 1px solid #ddd !important;
+    vertical-align: middle !important;
+}
+
+.wplm-enhanced-table thead th {
+    background-color: #f9f9f9 !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+}
+
+.wplm-enhanced-table tbody tr:nth-child(even) {
+    background-color: #f9f9f9 !important;
+}
+
+.wplm-enhanced-table tbody tr:hover {
+    background-color: #f0f0f0 !important;
+}
+
+/* DataTables specific styling */
+.dataTables_wrapper {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-x: auto !important;
+}
+
+.dataTables_wrapper .dataTables_scroll {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+.dataTables_wrapper .dataTables_scrollBody {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+.dataTables_wrapper .dataTables_scrollHead {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* Prevent table overflow */
+.dataTables_wrapper .dataTables_scrollBody table {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+}

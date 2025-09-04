@@ -158,7 +158,7 @@ jQuery(document).ready(function($) {
     autoCheckLicensedProduct();
 
     // --- Customer License Deactivation Logic ---
-    $('.deactivate-domain-button').on('click', function(e) {
+    $(document).on('click', '.deactivate-domain-button', function(e) {
         e.preventDefault();
 
         const button = $(this);

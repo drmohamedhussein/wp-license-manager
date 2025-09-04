@@ -296,21 +296,12 @@
             }
             
             data.forEach(function(activity) {
-                var associatedObjectHtml = '';
-                if (activity.object_id && activity.object_title && activity.object_type && activity.object_link) {
-                    associatedObjectHtml = `<a href="${activity.object_link}" target="_blank">${activity.object_title} (${activity.object_type.replace('wplm_', '').toUpperCase()})</a>`;
-                } else if (activity.object_title) {
-                    associatedObjectHtml = activity.object_title; // Fallback if no link or type
-                } else {
-                    associatedObjectHtml = '-';
-                }
-
                 var row = '<tr>' +
                     '<td>' + activity.date + '</td>' +
                     '<td>' + activity.action + '</td>' +
-                    '<td>' + associatedObjectHtml + '</td>' +
+                    '<td>' + activity.license + '</td>' +
                     '<td>' + activity.user + '</td>' +
-                    '<td>' + activity.description + '</td>' +
+                    '<td>' + activity.details + '</td>' +
                     '</tr>';
                 $tbody.append(row);
             });

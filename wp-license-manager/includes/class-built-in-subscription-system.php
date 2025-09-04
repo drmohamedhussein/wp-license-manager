@@ -70,7 +70,7 @@ class WPLM_Built_In_Subscription_System {
      * Import existing WooCommerce subscriptions
      */
     public function import_wc_subscriptions() {
-        if (get_option('wplm_wc_subscriptions_imported')) {
+        if (get_option('wplm_wc_subscriptions_imported', false)) {
             return;
         }
 
@@ -465,17 +465,15 @@ Thank you!', 'wp-license-manager'),
         $license_keys = get_post_meta($subscription_id, '_wplm_license_keys', true);
         if (is_array($license_keys)) {
             foreach ($license_keys as $license_key) {
-                $license_posts_query = new WP_Query([
-                    'post_type'      => 'wplm_license',
+                $license_posts = get_posts([
+                    'post_type' => 'wplm_license',
+                    'title' => $license_key,
                     'posts_per_page' => 1,
-                    'title'          => $license_key,
-                    'fields'         => 'ids',
-                    'exact'          => true,
+                    'post_status' => 'publish'
                 ]);
-                $license_post_id = $license_posts_query->posts[0] ?? null;
-
-                if ($license_post_id) {
-                    update_post_meta($license_post_id, '_wplm_status', 'expired');
+                if (!empty($license_posts)) {
+                    $license_post = $license_posts[0];
+                    update_post_meta($license_post->ID, '_wplm_status', 'expired');
                 }
             }
         }
@@ -644,10 +642,21 @@ Thank you!', 'wp-license-manager'),
             wp_send_json_error(['message' => 'Insufficient permissions']);
         }
 
-        $draw = intval($_POST['draw']);
-        $start = intval($_POST['start']);
-        $length = intval($_POST['length']);
-        $search = sanitize_text_field($_POST['search']['value']);
+        // Safe defaults for DataTables params to avoid undefined index notices
+        $draw = intval($_POST['draw'] ?? 1);
+        $start = intval($_POST['start'] ?? 0);
+        $length = intval($_POST['length'] ?? 25);
+        if ($length <= 0) { $length = 25; }
+
+        // Support both DataTables array format and flat string
+        $search_value = '';
+        if (isset($_POST['search'])) {
+            if (is_array($_POST['search']) && isset($_POST['search']['value'])) {
+                $search_value = sanitize_text_field($_POST['search']['value']);
+            } else {
+                $search_value = sanitize_text_field($_POST['search']);
+            }
+        }
 
         $args = [
             'post_type' => $this->subscription_post_type,
@@ -658,17 +667,17 @@ Thank you!', 'wp-license-manager'),
             'order' => 'DESC'
         ];
 
-        if (!empty($search)) {
+        if (!empty($search_value)) {
             $args['meta_query'] = [
                 'relation' => 'OR',
                 [
                     'key' => '_wplm_customer_email',
-                    'value' => $search,
+                    'value' => $search_value,
                     'compare' => 'LIKE'
                 ],
                 [
                     'key' => '_wplm_customer_name',
-                    'value' => $search,
+                    'value' => $search_value,
                     'compare' => 'LIKE'
                 ]
             ];

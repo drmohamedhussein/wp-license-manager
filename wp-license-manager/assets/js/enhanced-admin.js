@@ -16,7 +16,6 @@
             this.initModals();
             this.initTooltips();
             this.detectRTL();
-            this.initSelect2(); // Initialize Select2 for all dropdowns
         },
 
         /**
@@ -47,6 +46,7 @@
             
             // Modal triggers
             $(document).on('click', '.wplm-view-customer', this.viewCustomerDetails);
+            $(document).on('click', '.wplm-view-order', this.viewOrderDetails);
             $(document).on('click', '.wplm-close', this.closeModal);
             
             // Action buttons
@@ -54,14 +54,31 @@
             $(document).on('click', '#clear-old-logs', this.clearOldLogs);
             $(document).on('click', '#clear-all-logs', this.clearAllLogs);
             $(document).on('click', '#sync-wc-products', this.syncWooCommerceProducts);
-            $(document).on('click', '#scan-orders', this.scanWooCommerceOrders);
-            $(document).on('click', '#generate-licenses-button', this.generateWooCommerceLicenses);
+            $(document).on('click', '#sync-wc-customers', this.syncWooCommerceCustomers);
+            $(document).on('click', '#sync-wc-customer-orders', this.syncWooCommerceCustomerOrders);
+            $(document).on('click', '#sync-wc-orders', this.syncWooCommerceOrdersForOrders);
+            
+            // Orders page event listeners
+            $(document).on('click', '#add-order', this.showAddOrderModal);
+            $(document).on('submit', '#add-order-form', this.createOrder);
+            
+
             
             // Status toggles
             $(document).on('change', '.wplm-status-toggle', this.toggleStatus);
+
+            // Action buttons in License Management table (Activate/Deactivate)
+            $(document).on('click', '.wplm-toggle-status', this.clickToggleStatus);
             
             // Bulk actions
-            $(document).on('click', '#bulk-action-apply', this.applyBulkAction);
+            $(document).on('click', '#apply-bulk-action', this.applyBulkAction);
+            $(document).on('click', '#apply-bulk-action-products', this.applyBulkActionProducts);
+            $(document).on('click', '#apply-bulk-action-subscriptions', this.applyBulkActionSubscriptions);
+            
+            // Select all checkboxes
+            $(document).on('change', '#select-all-licenses', this.toggleSelectAllLicenses);
+            $(document).on('change', '#select-all-products', this.toggleSelectAllProducts);
+            $(document).on('change', '#select-all-subscriptions', this.toggleSelectAllSubscriptions);
         },
 
         /**
@@ -311,7 +328,8 @@
          * Initialize enhanced DataTables
          */
         initLicensesTable: function() {
-            this.initDataTable('#licenses-table', {
+            console.log('Initializing licenses table...');
+            const table = this.initDataTable('#licenses-table', {
                 ajax: {
                     url: wplm_admin.ajax_url,
                     type: 'POST',
@@ -320,9 +338,23 @@
                         d.nonce = wplm_admin.nonce;
                         d.status = $('#license-status-filter').val();
                         d.product = $('#license-product-filter').val();
+                        console.log('AJAX data:', d);
+                    },
+                    error: function(xhr, error, thrown) {
+                        console.error('DataTables AJAX error:', error, thrown);
+                        console.log('XHR response:', xhr.responseText);
                     }
                 },
                 columns: [
+                    { 
+                        data: null,
+                        orderable: false,
+                        searchable: false,
+                        className: 'wplm-checkbox-column',
+                        render: function(data, type, row) {
+                            return '<input type="checkbox" class="wplm-bulk-checkbox" value="' + row.id + '">';
+                        }
+                    },
                     { data: 'license_key' },
                     { data: 'customer' },
                     { data: 'product' },
@@ -341,22 +373,39 @@
                     }
                 ]
             });
+
+            // Checkbox column is now in HTML structure
         },
 
         /**
          * Initialize products table
          */
         initProductsTable: function() {
-            this.initDataTable('#products-table', {
+            console.log('Initializing products table...');
+            const table = this.initDataTable('#products-table', {
                 ajax: {
                     url: wplm_admin.ajax_url,
                     type: 'POST',
                     data: function(d) {
                         d.action = 'wplm_get_products';
                         d.nonce = wplm_admin.nonce;
+                        console.log('Products AJAX data:', d);
+                    },
+                    error: function(xhr, error, thrown) {
+                        console.error('Products DataTables AJAX error:', error, thrown);
+                        console.log('Products XHR response:', xhr.responseText);
                     }
                 },
                 columns: [
+                    { 
+                        data: null,
+                        orderable: false,
+                        searchable: false,
+                        className: 'wplm-checkbox-column',
+                        render: function(data, type, row) {
+                            return '<input type="checkbox" class="wplm-bulk-checkbox" value="' + row.id + '">';
+                        }
+                    },
                     { data: 'product_name' },
                     { data: 'product_id' },
                     { data: 'version' },
@@ -370,13 +419,15 @@
                     }
                 ]
             });
+
+            // Checkbox column is now in HTML structure
         },
 
         /**
          * Initialize subscriptions table
          */
         initSubscriptionsTable: function() {
-            this.initDataTable('#subscriptions-table', {
+            const table = this.initDataTable('#subscriptions-table', {
                 ajax: {
                     url: wplm_admin.ajax_url,
                     type: 'POST',
@@ -386,6 +437,15 @@
                     }
                 },
                 columns: [
+                    { 
+                        data: null,
+                        orderable: false,
+                        searchable: false,
+                        className: 'wplm-checkbox-column',
+                        render: function(data, type, row) {
+                            return '<input type="checkbox" class="wplm-bulk-checkbox" value="' + row.id + '">';
+                        }
+                    },
                     { data: 'subscription_id' },
                     { data: 'customer' },
                     { data: 'product' },
@@ -404,13 +464,16 @@
                     }
                 ]
             });
+
+            // Checkbox column is now in HTML structure
         },
 
         /**
          * Initialize customers table
          */
         initCustomersTable: function() {
-            this.initDataTable('#customers-table', {
+            console.log('Initializing customers table...');
+            const table = this.initDataTable('#customers-table', {
                 ajax: {
                     url: wplm_admin.ajax_url,
                     type: 'POST',
@@ -418,6 +481,11 @@
                         d.action = 'wplm_get_customers';
                         d.nonce = wplm_admin.nonce;
                         d.search = $('#customer-search').val();
+                        console.log('Customers AJAX data:', d);
+                    },
+                    error: function(xhr, error, thrown) {
+                        console.error('Customers DataTables AJAX error:', error, thrown);
+                        console.log('Customers XHR response:', xhr.responseText);
                     }
                 },
                 columns: [
@@ -434,6 +502,166 @@
                     }
                 ]
             });
+            
+            console.log('Customers table initialized:', table);
+        },
+
+        /**
+         * Initialize orders table
+         */
+        initOrdersTable: function() {
+            console.log('WPLM_Enhanced_Admin.initOrdersTable called');
+            console.log('Initializing orders table...');
+            
+            // Simple test to see if the table exists
+            if ($('#orders-table').length === 0) {
+                console.error('Orders table not found on page');
+                return;
+            }
+            
+            console.log('Orders table found, proceeding with initialization...');
+            console.log('Orders table element:', $('#orders-table')[0]);
+            console.log('Orders table HTML:', $('#orders-table').html());
+            
+            // First, try to load data manually to test the AJAX endpoint
+            $.ajax({
+                url: wplm_admin.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'wplm_get_orders',
+                    nonce: wplm_admin.nonce,
+                    draw: 1,
+                    start: 0,
+                    length: 25
+                },
+                success: function(response) {
+                    console.log('Manual AJAX test successful:', response);
+                    
+                    // If we got data, manually populate the table as fallback
+                    if (response && response.data && response.data.length > 0) {
+                        console.log('Manual population of orders table');
+                        const tbody = $('#orders-table tbody');
+                        let html = '';
+                        response.data.forEach(function(row) {
+                            html += '<tr>' +
+                                '<td>' + (row.order_number || '—') + '</td>' +
+                                '<td>' + (row.customer || '—') + '</td>' +
+                                '<td>' + (row.email || '—') + '</td>' +
+                                '<td>' + (row.total || '—') + '</td>' +
+                                '<td>' + (row.status || '—') + '</td>' +
+                                '<td>' + (row.date || '—') + '</td>' +
+                                '<td>' + (row.actions || '—') + '</td>' +
+                            '</tr>';
+                        });
+                        tbody.html(html);
+                        
+                        // Hide the processing indicator
+                        $('#orders-table').closest('.dataTables_wrapper').find('.dataTables_processing').hide();
+                    }
+                },
+                error: function(xhr, error, thrown) {
+                    console.error('Manual AJAX test failed:', error, thrown);
+                    console.log('Manual AJAX XHR response:', xhr.responseText);
+                }
+            });
+            
+            const table = this.initDataTable('#orders-table', {
+                serverSide: true,
+                processing: true,
+                ajax: {
+                    url: wplm_admin.ajax_url,
+                    type: 'POST',
+                    data: function(d) {
+                        d.action = 'wplm_get_orders';
+                        d.nonce = wplm_admin.nonce;
+                        d.search = d.search || {};
+                        d.search.value = $('#order-search').val();
+                        console.log('Orders AJAX data:', d);
+                    },
+                    dataSrc: function(json) {
+                        console.log('DataTables dataSrc called with:', json);
+                        return json.data || [];
+                    },
+                    complete: function(xhr) {
+                        console.log('Orders AJAX complete - Response:', xhr.responseText);
+                    },
+                    success: function(data) {
+                        console.log('Orders AJAX success response:', data);
+                    },
+                    error: function(xhr, error, thrown) {
+                        console.error('Orders DataTables AJAX error:', error, thrown);
+                        console.log('Orders XHR response:', xhr.responseText);
+                    }
+                },
+                columns: [
+                    { 
+                        data: 'order_number',
+                        title: 'Order Number',
+                        render: function(data, type, row) {
+                            return data || '—';
+                        }
+                    },
+                    { 
+                        data: 'customer',
+                        title: 'Customer',
+                        render: function(data, type, row) {
+                            return data || '—';
+                        }
+                    },
+                    { 
+                        data: 'email',
+                        title: 'Email',
+                        render: function(data, type, row) {
+                            return data || '—';
+                        }
+                    },
+                    { 
+                        data: 'total',
+                        title: 'Total',
+                        render: function(data, type, row) {
+                            return data || '—';
+                        }
+                    },
+                    { 
+                        data: 'status',
+                        title: 'Status',
+                        render: function(data, type, row) {
+                            return data || '—';
+                        }
+                    },
+                    { 
+                        data: 'date',
+                        title: 'Date',
+                        render: function(data, type, row) {
+                            return data || '—';
+                        }
+                    },
+                    { 
+                        data: 'actions',
+                        title: 'Actions',
+                        orderable: false,
+                        searchable: false,
+                        render: function(data, type, row) {
+                            return data || '—';
+                        }
+                    }
+                ]
+            });
+            
+            console.log('Orders table initialized:', table);
+
+            // Ensure reload on search button
+            $(document).off('click.wplmSearchOrders').on('click.wplmSearchOrders', '#search-orders', function() {
+                if ($.fn.DataTable.isDataTable('#orders-table')) {
+                    $('#orders-table').DataTable().ajax.reload();
+                }
+            });
+            
+            // Additional debugging after initialization
+            setTimeout(function() {
+                console.log('DataTable instance:', table);
+                console.log('DataTable settings:', table ? table.settings() : 'No table instance');
+            }, 2000);
         },
 
         /**
@@ -477,14 +705,20 @@
          * Initialize DataTable with common settings
          */
         initDataTable: function(selector, options) {
+            // Check if DataTables is available
+            if (typeof $.fn.DataTable === 'undefined') {
+                console.error('DataTables is not loaded!');
+                $(selector).html('<div class="wplm-error">DataTables library is not loaded. Please refresh the page.</div>');
+                return null;
+            }
+
             const defaultOptions = {
                 processing: true,
-                serverSide: true,
                 responsive: true,
                 pageLength: 25,
                 lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
                 language: {
-                    processing: '<div class="wplm-loading">' + wplm_admin.strings.loading + '</div>',
+                    processing: '<div class="wplm-loading">' + (wplm_admin ? wplm_admin.strings.loading : 'Loading...') + '</div>',
                     emptyTable: 'No data available',
                     zeroRecords: 'No matching records found'
                 },
@@ -496,11 +730,16 @@
 
             const finalOptions = $.extend(true, {}, defaultOptions, options);
             
+            console.log('DataTables final options:', finalOptions);
+            
             if ($.fn.DataTable.isDataTable(selector)) {
+                console.log('Destroying existing DataTable');
                 $(selector).DataTable().destroy();
             }
             
-            return $(selector).DataTable(finalOptions);
+            const table = $(selector).DataTable(finalOptions);
+            console.log('DataTable created:', table);
+            return table;
         },
 
         /**
@@ -555,6 +794,35 @@
                     if (response.success) {
                         $('#customer-modal-body').html(response.data.html);
                         $('#customer-modal').show();
+                    } else {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
+                    }
+                },
+                error: function() {
+                    WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.error, 'error');
+                }
+            });
+        },
+
+        /**
+         * View order details
+         */
+        viewOrderDetails: function(e) {
+            e.preventDefault();
+            const orderId = $(this).data('order-id');
+            
+            $.ajax({
+                url: wplm_admin.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'wplm_get_order_details',
+                    nonce: wplm_admin.nonce,
+                    order_id: orderId
+                },
+                success: function(response) {
+                    if (response.success) {
+                        $('#order-modal-body').html(response.data.html);
+                        $('#order-modal').show();
                     } else {
                         WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
                     }
@@ -697,6 +965,129 @@
         },
 
         /**
+         * Sync WooCommerce customers
+         */
+        syncWooCommerceCustomers: function() {
+            const $button = $(this);
+            const originalText = $button.text();
+            const $status = $('#wc-customer-sync-status');
+            
+            $button.prop('disabled', true).text(wplm_admin.strings.loading);
+            $status.html('<div class="wplm-sync-progress">Syncing customers from WooCommerce...</div>');
+
+            $.ajax({
+                url: wplm_admin.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'wplm_sync_wc_customers',
+                    nonce: wplm_admin.nonce
+                },
+                success: function(response) {
+                    console.log('Sync response:', response);
+                    if (response.success) {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'success');
+                        $status.html('<div class="wplm-sync-success">' + response.data.message + '</div>');
+                        if ($('#customers-table').length) {
+                            console.log('Reloading customers table...');
+                            $('#customers-table').DataTable().ajax.reload();
+                        }
+                    } else {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
+                        $status.html('<div class="wplm-sync-error">' + response.data.message + '</div>');
+                    }
+                },
+                error: function() {
+                    WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.error, 'error');
+                    $status.html('<div class="wplm-sync-error">Sync failed. Please try again.</div>');
+                },
+                complete: function() {
+                    $button.prop('disabled', false).text(originalText);
+                }
+            });
+        },
+
+        /**
+         * Sync WooCommerce customer orders
+         */
+        syncWooCommerceCustomerOrders: function() {
+            const $button = $(this);
+            const originalText = $button.text();
+            const $status = $('#wc-customer-sync-status');
+            
+            $button.prop('disabled', true).text(wplm_admin.strings.loading);
+            $status.html('<div class="wplm-sync-progress">Syncing recent orders from WooCommerce...</div>');
+
+            $.ajax({
+                url: wplm_admin.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'wplm_sync_wc_customer_orders',
+                    nonce: wplm_admin.nonce
+                },
+                success: function(response) {
+                    if (response.success) {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'success');
+                        $status.html('<div class="wplm-sync-success">' + response.data.message + '</div>');
+                        if ($('#customers-table').length) {
+                            $('#customers-table').DataTable().ajax.reload();
+                        }
+                    } else {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
+                        $status.html('<div class="wplm-sync-error">' + response.data.message + '</div>');
+                    }
+                },
+                error: function() {
+                    WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.error, 'error');
+                    $status.html('<div class="wplm-sync-error">Sync failed. Please try again.</div>');
+                },
+                complete: function() {
+                    $button.prop('disabled', false).text(originalText);
+                }
+            });
+        },
+
+        /**
+         * Sync WooCommerce orders for order management
+         */
+        syncWooCommerceOrdersForOrders: function() {
+            const $button = $(this);
+            const originalText = $button.text();
+            const $status = $('#wc-order-sync-status');
+            
+            $button.prop('disabled', true).text(wplm_admin.strings.loading);
+            $status.html('<div class="wplm-sync-progress">Syncing orders from WooCommerce...</div>');
+
+            $.ajax({
+                url: wplm_admin.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'wplm_sync_wc_orders',
+                    nonce: wplm_admin.nonce,
+                    days_back: 30
+                },
+                success: function(response) {
+                    if (response.success) {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'success');
+                        $status.html('<div class="wplm-sync-success">' + response.data.message + '</div>');
+                        if ($('#orders-table').length) {
+                            $('#orders-table').DataTable().ajax.reload();
+                        }
+                    } else {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
+                        $status.html('<div class="wplm-sync-error">' + response.data.message + '</div>');
+                    }
+                },
+                error: function() {
+                    WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.error, 'error');
+                    $status.html('<div class="wplm-sync-error">Sync failed. Please try again.</div>');
+                },
+                complete: function() {
+                    $button.prop('disabled', false).text(originalText);
+                }
+            });
+        },
+
+        /**
          * Toggle status
          */
         toggleStatus: function() {
@@ -731,18 +1122,108 @@
         },
 
         /**
-         * Apply bulk action
+         * Click handler for action buttons rendered as .wplm-toggle-status
+         */
+        clickToggleStatus: function(e) {
+            e.preventDefault();
+            const $btn = $(this);
+            const itemId = $btn.data('id');
+            const nextStatus = $btn.data('status'); // 'active' or 'inactive'
+
+            if (!itemId || !nextStatus) {
+                WPLM_Enhanced_Admin.showNotification('Invalid action parameters', 'error');
+                return;
+            }
+
+            const originalText = $btn.text();
+            $btn.prop('disabled', true).text(wplm_admin.strings && wplm_admin.strings.loading ? wplm_admin.strings.loading : 'Working...');
+
+            $.ajax({
+                url: wplm_admin.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'wplm_toggle_status',
+                    nonce: wplm_admin.nonce,
+                    item_id: itemId,
+                    item_type: 'license',
+                    new_status: nextStatus
+                },
+                success: function(response) {
+                    if (response && response.success) {
+                        // Toggle button label and data-status for the next action
+                        if (nextStatus === 'inactive') {
+                            $btn.text('Activate');
+                            $btn.data('status', 'active');
+                        } else {
+                            $btn.text('Deactivate');
+                            $btn.data('status', 'inactive');
+                        }
+                        WPLM_Enhanced_Admin.showNotification(response.data && response.data.message ? response.data.message : 'Status updated', 'success');
+                    } else {
+                        $btn.text(originalText);
+                        WPLM_Enhanced_Admin.showNotification(response && response.data && response.data.message ? response.data.message : 'Update failed', 'error');
+                    }
+                },
+                error: function() {
+                    $btn.text(originalText);
+                    WPLM_Enhanced_Admin.showNotification('Request failed', 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false);
+                }
+            });
+        },
+
+        /**
+         * Apply bulk action for licenses
          */
         applyBulkAction: function() {
-            const action = $('#bulk-action-select').val();
+            const action = $('#bulk-action-selector').val();
             const selected = [];
             
-            $('.wplm-bulk-checkbox:checked').each(function() {
+            $('#licenses-table .wplm-bulk-checkbox:checked').each(function() {
                 selected.push($(this).val());
             });
             
             if (!action || selected.length === 0) {
                 WPLM_Enhanced_Admin.showNotification('Please select an action and items', 'error');
+                return;
+            }
+            
+            // Special handling for lightning deactivation
+            if (action === 'force_deactivate') {
+                if (!confirm('Are you sure you want to LIGHTNING DEACTIVATE these licenses? This will instantly clear all domain activations and cannot be undone.')) {
+                    return;
+                }
+                
+                const startTime = performance.now();
+                
+                $.ajax({
+                    url: wplm_admin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'wplm_force_deactivate_licenses',
+                        nonce: wplm_admin.nonce,
+                        license_ids: selected
+                    },
+                    success: function(response) {
+                        const endTime = performance.now();
+                        const duration = Math.round(endTime - startTime);
+                        
+                        if (response.success) {
+                            WPLM_Enhanced_Admin.showNotification(
+                                `⚡ ${response.data.message} (Client: ${duration}ms)`, 
+                                'success'
+                            );
+                            $('#licenses-table').DataTable().ajax.reload();
+                        } else {
+                            WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
+                        }
+                    },
+                    error: function() {
+                        WPLM_Enhanced_Admin.showNotification('Lightning deactivation failed', 'error');
+                    }
+                });
                 return;
             }
             
@@ -762,7 +1243,7 @@
                 success: function(response) {
                     if (response.success) {
                         WPLM_Enhanced_Admin.showNotification(response.data.message, 'success');
-                        $('.wplm-enhanced-table').DataTable().ajax.reload();
+                        $('#licenses-table').DataTable().ajax.reload();
                     } else {
                         WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
                     }
@@ -815,122 +1296,6 @@
                 data.push(Math.floor(Math.random() * 50) + 10);
             }
             return data;
-        },
-
-        /**
-         * Initialize Select2 for AJAX dropdowns
-         */
-        initSelect2: function() {
-            if ($.fn.select2) {
-                $('#wplm_subscription_customer_id').select2({
-                    placeholder: wplm_admin.strings.select_customer,
-                    allowClear: true,
-                    ajax: {
-                        url: wplm_admin.ajax_url,
-                        dataType: 'json',
-                        delay: 250,
-                        data: function (params) {
-                            return {
-                                action: 'wplm_search_customers',
-                                nonce: wplm_admin.nonce,
-                                search: params.term, // search term
-                                page: params.page
-                            };
-                        },
-                        processResults: function (data, params) {
-                            params.page = params.page || 1;
-                            return {
-                                results: data.data.customers,
-                                pagination: {
-                                    more: (params.page * 30) < data.data.total_count
-                                }
-                            };
-                        },
-                        cache: true
-                    },
-                    minimumInputLength: 2,
-                    templateResult: function(customer) {
-                        if (customer.loading) return customer.text;
-                        return `<div>${customer.text} (${customer.email})</div>`;
-                    },
-                    templateSelection: function(customer) {
-                        return customer.text || customer.id;
-                    }
-                });
-        
-                $('#wplm_subscription_product_id').select2({
-                    placeholder: wplm_admin.strings.select_product,
-                    allowClear: true,
-                    ajax: {
-                        url: wplm_admin.ajax_url,
-                        dataType: 'json',
-                        delay: 250,
-                        data: function (params) {
-                            return {
-                                action: 'wplm_search_products',
-                                nonce: wplm_admin.nonce,
-                                search: params.term, // search term
-                                page: params.page
-                            };
-                        },
-                        processResults: function (data, params) {
-                            params.page = params.page || 1;
-                            return {
-                                results: data.data.products,
-                                pagination: {
-                                    more: (params.page * 30) < data.data.total_count
-                                }
-                            };
-                        },
-                        cache: true
-                    },
-                    minimumInputLength: 2,
-                    templateResult: function(product) {
-                        if (product.loading) return product.text;
-                        return `<div>${product.text} (ID: ${product.id})</div>`;
-                    },
-                    templateSelection: function(product) {
-                        return product.text || product.id;
-                    }
-                });
-        
-                // Initialize Select2 for product search fields in Add/Bulk License Modals
-                $('.wplm-select2-product-search').select2({
-                    placeholder: wplm_admin.strings.select_product,
-                    allowClear: true,
-                    ajax: {
-                        url: wplm_admin.ajax_url,
-                        dataType: 'json',
-                        delay: 250,
-                        data: function (params) {
-                            return {
-                                action: 'wplm_search_products',
-                                nonce: wplm_admin.nonce,
-                                search: params.term, // search term
-                                page: params.page
-                            };
-                        },
-                        processResults: function (data, params) {
-                            params.page = params.page || 1;
-                            return {
-                                results: data.data.products,
-                                pagination: {
-                                    more: (params.page * 30) < data.data.total_count
-                                }
-                            };
-                        },
-                        cache: true
-                    },
-                    minimumInputLength: 2,
-                    templateResult: function(product) {
-                        if (product.loading) return product.text;
-                        return `<div>${product.text} (ID: ${product.id})</div>`;
-                    },
-                    templateSelection: function(product) {
-                        return product.text || product.id;
-                    }
-                });
-            }
         },
 
         /**
@@ -1075,115 +1440,183 @@
                 }
             });
         },
-        
+
         /**
-         * Scan WooCommerce Orders for licensed products.
+         * Apply bulk action for products
          */
-        scanWooCommerceOrders: function() {
-            const $button = $(this);
-            const $form = $('#wc-bulk-form');
-            const $resultsDiv = $('#order-scan-results');
-            const $generateButton = $('#generate-licenses-button');
-            const originalButtonText = $button.text();
-
-            $button.prop('disabled', true).text(wplm_admin.strings.scanning_orders_text);
-            $generateButton.prop('disabled', true);
-            $resultsDiv.html('<div class="wplm-loading-spinner"></div> ' + wplm_admin.strings.scanning_orders_text + '...');
-
-            $.ajax({
-                url: wplm_admin.ajax_url,
-                type: 'POST',
-                data: $form.serialize() + '&action=wplm_scan_wc_orders' + '&nonce=' + wplm_admin.bulk_operations_nonce,
-                success: function(response) {
-                    if (response.success) {
-                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'success');
-                        let resultsHtml = '<h4>' + response.data.message + '</h4>';
-                        if (response.data.scannable_orders.length > 0) {
-                            resultsHtml += '<p>' + wplm_admin.strings.orders_to_process + ':</p>';
-                            resultsHtml += '<ul class="wplm-list-disc wplm-list-inside">';
-                            response.data.scannable_orders.forEach(function(order) {
-                                resultsHtml += `<li><a href="${wplm_admin.admin_url}post.php?post=${order.order_id}&action=edit" target="_blank">#${order.order_number}</a> (${order.customer_email}) - ${order.total_products} ${wplm_admin.strings.licenses_text}</li>`;
-                            });
-                            resultsHtml += '</ul>';
-                            $generateButton.prop('disabled', false).data('products-to-license', response.data.products_to_license);
-                            $generateButton.data('send-emails', $form.find('input[name="send_emails"]').is(':checked'));
-
-                        } else {
-                            resultsHtml += '<p>' + wplm_admin.strings.no_orders_found + '</p>';
-                        }
-                        $resultsDiv.html(resultsHtml);
-                    } else {
-                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
-                        $resultsDiv.html('<p class="error-message">' + response.data.message + '</p>');
-                    }
-                },
-                error: function() {
-                    WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.error_scanning_orders, 'error');
-                    $resultsDiv.html('<p class="error-message">' + wplm_admin.strings.error_scanning_orders + '</p>');
-                },
-                complete: function() {
-                    $button.prop('disabled', false).text(originalButtonText);
-                }
+        applyBulkActionProducts: function() {
+            const action = $('#bulk-action-selector-products').val();
+            const selected = [];
+            
+            $('#products-table .wplm-bulk-checkbox:checked').each(function() {
+                selected.push($(this).val());
             });
-        },
-
-        /**
-         * Generate licenses for scanned WooCommerce orders.
-         */
-        generateWooCommerceLicenses: function() {
-            const $button = $(this);
-            const $resultsDiv = $('#wc-result');
-            const productsToLicense = $button.data('products-to-license');
-            const sendEmails = $button.data('send-emails');
-            const originalButtonText = $button.text();
-
-            if (!productsToLicense || Object.keys(productsToLicense).length === 0) {
-                WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.no_licenses_to_generate, 'warning');
+            
+            if (!action || selected.length === 0) {
+                WPLM_Enhanced_Admin.showNotification('Please select an action and items', 'error');
                 return;
             }
-
-            if (!confirm(wplm_admin.strings.confirm_generate_licenses)) {
+            
+            if (!confirm('Are you sure you want to perform this bulk action?')) {
                 return;
             }
-
-            $button.prop('disabled', true).text(wplm_admin.strings.generating_licenses_text);
-            $resultsDiv.html('<div class="wplm-loading-spinner"></div> ' + wplm_admin.strings.generating_licenses_text + '...');
 
             $.ajax({
                 url: wplm_admin.ajax_url,
                 type: 'POST',
                 data: {
-                    action: 'wplm_generate_wc_licenses',
-                    nonce: wplm_admin.bulk_operations_nonce,
-                    orders_data: JSON.stringify(productsToLicense),
-                    send_emails: sendEmails,
+                    action: 'wplm_bulk_action',
+                    nonce: wplm_admin.nonce,
+                    bulk_action: action,
+                    items: selected
                 },
                 success: function(response) {
                     if (response.success) {
                         WPLM_Enhanced_Admin.showNotification(response.data.message, 'success');
-                        let detailsHtml = '<h4>' + response.data.message + '</h4>';
-                        detailsHtml += '<p>' + wplm_admin.strings.generated_licenses_details + ':</p>';
-                        detailsHtml += '<ul class="wplm-list-disc wplm-list-inside">';
-                        response.data.details.forEach(function(license) {
-                            detailsHtml += `<li><a href="${wplm_admin.admin_url}post.php?post=${license.license_id}&action=edit" target="_blank">${license.license_key}</a> (${license.product_name}) for <a href="${wplm_admin.admin_url}post.php?post=${license.order_id}&action=edit" target="_blank">Order #${license.order_id}</a> - ${license.customer_email}</li>`;
-                        });
-                        detailsHtml += '</ul>';
-                        $resultsDiv.html(detailsHtml);
-                        // Optionally refresh licenses table if it's on the same page
-                        if ($('#licenses-table').length) {
-                            $('#licenses-table').DataTable().ajax.reload();
-                        }
+                        $('#products-table').DataTable().ajax.reload();
                     } else {
                         WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
-                        $resultsDiv.html('<p class="error-message">' + response.data.message + '</p>');
                     }
                 },
                 error: function() {
-                    WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.error_generating_licenses, 'error');
-                    $resultsDiv.html('<p class="error-message">' + wplm_admin.strings.error_generating_licenses + '</p>');
+                    WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.error, 'error');
+                }
+            });
+        },
+
+        /**
+         * Apply bulk action for subscriptions
+         */
+        applyBulkActionSubscriptions: function() {
+            const action = $('#bulk-action-selector-subscriptions').val();
+            const selected = [];
+            
+            $('#subscriptions-table .wplm-bulk-checkbox:checked').each(function() {
+                selected.push($(this).val());
+            });
+            
+            if (!action || selected.length === 0) {
+                WPLM_Enhanced_Admin.showNotification('Please select an action and items', 'error');
+                return;
+            }
+            
+            if (!confirm('Are you sure you want to perform this bulk action?')) {
+                return;
+            }
+
+            $.ajax({
+                url: wplm_admin.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'wplm_bulk_action',
+                    nonce: wplm_admin.nonce,
+                    bulk_action: action,
+                    items: selected
                 },
-                complete: function() {
-                    $button.prop('disabled', false).text(originalButtonText);
+                success: function(response) {
+                    if (response.success) {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'success');
+                        $('#subscriptions-table').DataTable().ajax.reload();
+                    } else {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
+                    }
+                },
+                error: function() {
+                    WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.error, 'error');
+                }
+            });
+        },
+
+        /**
+         * Toggle select all for licenses
+         */
+        toggleSelectAllLicenses: function() {
+            const isChecked = $(this).is(':checked');
+            $('#licenses-table .wplm-bulk-checkbox').prop('checked', isChecked);
+        },
+
+        /**
+         * Toggle select all for products
+         */
+        toggleSelectAllProducts: function() {
+            const isChecked = $(this).is(':checked');
+            $('#products-table .wplm-bulk-checkbox').prop('checked', isChecked);
+        },
+
+        /**
+         * Toggle select all for subscriptions
+         */
+        toggleSelectAllSubscriptions: function() {
+            const isChecked = $(this).is(':checked');
+            $('#subscriptions-table .wplm-bulk-checkbox').prop('checked', isChecked);
+        },
+
+        /**
+         * Show add order modal
+         */
+        showAddOrderModal: function() {
+            $('#add-order-modal').show();
+        },
+
+        /**
+         * Create new order
+         */
+        createOrder: function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const data = {};
+            formData.forEach((value, key) => {
+                data[key] = value;
+            });
+            
+            data.action = 'wplm_create_order';
+            data.nonce = wplm_admin.nonce;
+            
+            $.ajax({
+                url: wplm_admin.ajax_url,
+                type: 'POST',
+                data: data,
+                success: function(response) {
+                    if (response.success) {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'success');
+                        WPLM_Enhanced_Admin.closeModal();
+                        $('#orders-table').DataTable().ajax.reload();
+                        e.target.reset();
+                    } else {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
+                    }
+                },
+                error: function() {
+                    WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.error, 'error');
+                }
+            });
+        },
+
+        /**
+         * View order details
+         */
+        viewOrderDetails: function() {
+            const orderId = $(this).data('order-id');
+            
+            $.ajax({
+                url: wplm_admin.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'wplm_get_order_details',
+                    nonce: wplm_admin.nonce,
+                    order_id: orderId
+                },
+                success: function(response) {
+                    if (response.success) {
+                        $('#order-modal-body').html(response.data.html);
+                        $('#order-modal').show();
+                    } else {
+                        WPLM_Enhanced_Admin.showNotification(response.data.message, 'error');
+                    }
+                },
+                error: function() {
+                    WPLM_Enhanced_Admin.showNotification(wplm_admin.strings.error, 'error');
                 }
             });
         }
@@ -1191,7 +1624,48 @@
 
     // Initialize when document is ready
     $(document).ready(function() {
+        // Check if wplm_admin object is available
+        if (typeof wplm_admin === 'undefined') {
+            console.error('wplm_admin object is not defined!');
+            return;
+        }
+        
+        console.log('wplm_admin object:', wplm_admin);
+        console.log('WPLM_Enhanced_Admin object:', typeof WPLM_Enhanced_Admin);
+        console.log('WPLM_Enhanced_Admin.initOrdersTable:', typeof WPLM_Enhanced_Admin.initOrdersTable);
+        
         WPLM_Enhanced_Admin.init();
+        
+        // Initialize specific tables based on current page
+        if ($('#licenses-table').length) {
+            console.log('Found licenses table, initializing...');
+            WPLM_Enhanced_Admin.initLicensesTable();
+        }
+        
+        if ($('#products-table').length) {
+            console.log('Found products table, initializing...');
+            WPLM_Enhanced_Admin.initProductsTable();
+        }
+        
+        if ($('#subscriptions-table').length) {
+            console.log('Found subscriptions table, initializing...');
+            WPLM_Enhanced_Admin.initSubscriptionsTable();
+        }
+        
+        if ($('#customers-table').length) {
+            console.log('Found customers table, initializing...');
+            WPLM_Enhanced_Admin.initCustomersTable();
+        }
+        
+        if ($('#orders-table').length && !$.fn.DataTable.isDataTable('#orders-table')) {
+            console.log('Found orders table, initializing...');
+            WPLM_Enhanced_Admin.initOrdersTable();
+        }
+        
+        if ($('#activity-log-table').length) {
+            console.log('Found activity log table, initializing...');
+            WPLM_Enhanced_Admin.initActivityLogTable();
+        }
     });
 
 })(jQuery);
